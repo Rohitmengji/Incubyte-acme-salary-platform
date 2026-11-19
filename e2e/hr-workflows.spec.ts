@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { login, uniqueCode } from './helpers';
 
 test.describe('authentication', () => {
@@ -31,6 +31,19 @@ test.describe('authentication', () => {
     await expect(page).toHaveURL(/\/login/);
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/login\?next=%2Fdashboard/);
+  });
+
+  test('never follows a "next" link to another site after sign-in', async ({ page }) => {
+    // Browsers treat "/\t/evil.example" as the protocol-relative "//evil.example".
+    await page.route(
+      (url) => url.hostname === 'evil.example',
+      (route) => route.abort(),
+    );
+    await page.goto('/login?next=%2F%09%2Fevil.example');
+    await page.getByLabel('Work email').fill('hr.viewer@acme.example');
+    await page.getByLabel('Password').fill('Viewer-Demo-2026!');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page).toHaveURL(/^http:\/\/localhost:\d+\/dashboard$/);
   });
 });
 
@@ -74,8 +87,18 @@ test('employee search, filters, sorting and pagination run on the server and liv
   );
   await page.getByRole('button', { name: 'Next page' }).click();
   await expect(page).toHaveURL(/page=2/);
+  await expect(page.getByText(/Showing 26–50 of/)).toBeVisible();
+  // Each filter/sort/page change is a history entry, so Back steps through the list states.
   await page.goBack();
+  await expect(page).toHaveURL(/\/employees\?.*country=JP/);
   await expect(page).not.toHaveURL(/page=2/);
+  await expect(page.getByText(/Showing 1–25 of/)).toBeVisible();
+  await expect(page.getByRole('columnheader', { name: 'Hire date' })).toHaveAttribute(
+    'aria-sort',
+    'ascending',
+  );
+  await page.goBack();
+  await expect(page).toHaveURL(/\/employees\?country=JP$/);
 });
 
 test('HR manager creates an employee, changes and corrects their salary, and sees the audit trail', async ({
@@ -122,7 +145,11 @@ test('HR manager creates an employee, changes and corrects their salary, and see
   await change.getByLabel('Effective from').fill('2025-04-01');
   await change.getByRole('button', { name: 'Save salary change' }).click();
   await expect(change.getByText(/already starts on 2025-04-01/).first()).toBeVisible();
+  // The rejected field gets focus so its error is announced.
+  await expect(change.getByLabel('Effective from')).toBeFocused();
   await change.getByRole('button', { name: 'Cancel' }).click();
+  // Closing a dialog returns focus to the button that opened it.
+  await expect(page.getByRole('button', { name: 'Add salary change' })).toBeFocused();
 
   // Correction with a reason
   await history.getByRole('button', { name: /Correct record effective 1 Apr 2025/ }).click();
@@ -242,6 +269,41 @@ test.describe('accessibility (axe, WCAG 2.2 AA rules)', () => {
       expect(serious.map((v) => `${v.id}: ${v.help} (${v.nodes.length})`)).toEqual([]);
     });
   }
+
+  const seriousViolations = async (page: Page) => {
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+    return results.violations
+      .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+      .map((v) => `${v.id}: ${v.help} (${v.nodes.length})`);
+  };
+
+  test('employee detail, its dialogs and audit tab have no serious or critical violations', async ({
+    page,
+  }) => {
+    await login(page, 'manager', '/employees?search=EMP-000200');
+    await page.locator('tbody a').first().click();
+    await expect(page.getByRole('table', { name: /Salary history/ })).toBeVisible();
+    expect(await seriousViolations(page)).toEqual([]);
+
+    await page.getByRole('button', { name: 'Edit details' }).click();
+    await expect(page.getByRole('dialog', { name: /Edit/ })).toBeVisible();
+    expect(await seriousViolations(page)).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('button', { name: 'Edit details' })).toBeFocused();
+
+    await page.getByRole('tab', { name: 'Audit trail' }).click();
+    await expect(page.getByRole('tabpanel', { name: 'Audit trail' })).toBeVisible();
+    await page.waitForLoadState('networkidle');
+    expect(await seriousViolations(page)).toEqual([]);
+  });
+
+  test('a not-found employee page has no serious or critical violations', async ({ page }) => {
+    await login(page, 'viewer', '/employees/00000000-0000-7000-8000-000000000000');
+    await expect(page.getByText('Employee not found')).toBeVisible();
+    expect(await seriousViolations(page)).toEqual([]);
+  });
 
   test('sign-in page has no serious or critical violations', async ({ page }) => {
     await page.goto('/login');
