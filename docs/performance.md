@@ -146,6 +146,36 @@ The single Node process and the default Prisma connection pool are the limit her
 
 The roughly 115 KB difference between the chart pages and the others is the charting library (Recharts). Largest Contentful Paint on localhost was 20–200 ms, so it says little about real networks.
 
+## Live deployment (Vercel + Neon)
+
+Measured on 2026-11-19 against https://incubyte-acme-salary.vercel.app (setup in [deployment.md](./deployment.md)).
+
+**Method:**
+
+- **Path:** the client was this development machine in India. Requests entered Vercel's Mumbai edge (`bom1`), were rewritten to the API project, and ran in a function in Washington, D.C. (`iad1`). The response header `x-vercel-id: bom1:bom1:bom1::iad1::…` confirms the path.
+- **Database:** Neon in AWS `us-east-1`, next to the function.
+- **Requests:** an authenticated HR manager session, 3 warm-up requests, then 20 sequential requests per scenario (10 for trends, 5 for the export). Every response was asserted to be `200`.
+- **Timing:** each figure is the full round trip, including the India–US network path.
+
+| Scenario                                                   | p50     | p95     |
+| ---------------------------------------------------------- | ------- | ------- |
+| Static page `/login` (served by the CDN, network baseline) | 102 ms  | 147 ms  |
+| `GET /api/v1/health` (function plus a database ping)       | 302 ms  | 372 ms  |
+| Employee list, page 1                                      | 309 ms  | 381 ms  |
+| Employee list, last page (`page=400`)                      | 307 ms  | 345 ms  |
+| Search `sha`, sorted by hire date                          | 310 ms  | 358 ms  |
+| `GET /analytics/summary`                                   | 356 ms  | 387 ms  |
+| `GET /analytics/distribution` (department, normalised)     | 356 ms  | 419 ms  |
+| `GET /analytics/trends?months=24`                          | 591 ms  | 616 ms  |
+| `GET /exports/employees.csv` (10,000 rows, 1.35 MB)        | 1192 ms | 1697 ms |
+
+**How to read this:**
+
+- The health check does almost no work, yet takes about 300 ms. That's the cost of the network path: India to US East, and two Vercel proxies (the web project's rewrite, then the API project's edge).
+- The list endpoints add almost nothing on top. Analytics adds about 50 ms, and trends about 290 ms. That matches the local figures above (31 ms and 245 ms), plus function-to-database round trips.
+- **Against the targets** (list p95 under 200 ms, dashboard under 500 ms): those were set for a local run, and locally they're met by a wide margin. Live from India, the list is p95 381 ms, so it doesn't meet a 200 ms target. Nearly all of that is distance, not query time. Placing the function and database close to the users (for example `sin1` and Neon `ap-southeast-1` for India) is the fix. It hasn't been measured.
+- **Seeding Neon from this machine** took 103 s for the first run and 90 s for the idempotent re-run, against 3.7 s locally. The seed makes a few round trips per 1,000-row chunk, and each one crosses the internet. The 60 s seed target is for local setup, where it's met.
+
 ## Not measured yet
 
 - Core Web Vitals on a real network or device, and a Lighthouse run.

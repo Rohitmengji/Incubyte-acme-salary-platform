@@ -34,7 +34,7 @@ ACME has 10,000 employees in several countries. HR keeps their salaries in Excel
 - **Security:** passwords hashed with Argon2id. An opaque session token in an `HttpOnly`, `Secure`, `SameSite` cookie, never in `localStorage`. Every input validated and every route role-checked on the server. Login rate-limited, strict CORS and origin checks, safe error messages, `Cache-Control: no-store` on salary data. Synthetic seed data only, no secrets in Git. Details are in [architecture §10](./architecture.md#10-security-model).
 - **Performance** (targets to measure, not claims): employee list API p95 under 200 ms and dashboard API under 500 ms with 10,000 employees locally. The browser never receives the full dataset. Seeding 10,000 employees takes under 60 s and is safe to run repeatedly.
 - **Accessibility:** WCAG 2.2 AA: semantic HTML, full keyboard operation, visible focus, labelled fields, accessible dialogs, live-region feedback, a contrast-checked palette, and a table view for every chart.
-- **Operability:** local setup without Docker, plus Docker Compose. Structured logs with request IDs, a health endpoint, and CI on every push.
+- **Operability:** local setup without Docker, plus Docker Compose. Docker Compose was later dropped by decision; see the [acceptance checklist](./acceptance-checklist.md). Structured logs with request IDs, a health endpoint, and CI on every push.
 - **Quality:** TypeScript strict mode. Salary timeline, money and CSV rules built test-first. Integration tests against real PostgreSQL. Playwright covers the five critical journeys.
 
 ## Out of scope (deliberately)
