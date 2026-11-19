@@ -7,7 +7,7 @@ const booleanString = z
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  // Loopback by default: only the web app's proxy should reach the API. Containers set 0.0.0.0.
+  // Loopback by default: only the web app's proxy should reach the API. Set 0.0.0.0 to expose it.
   HOST: z.string().min(1).default('127.0.0.1'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   DATABASE_URL: z.string().url('DATABASE_URL must be a postgresql:// connection string'),

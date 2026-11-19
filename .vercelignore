@@ -1,0 +1,16 @@
+# Files the Vercel CLI must never upload: local database data, secrets and build or test output.
+.data
+.git
+node_modules
+**/node_modules
+**/.next*
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+**/.vercel
+test-results
+playwright-report
+blob-report
+coverage
+apps/api/src/generated
