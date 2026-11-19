@@ -114,11 +114,14 @@ function SearchBox({ value, onSearch }: { value: string; onSearch: (value: strin
   const lastSent = useRef(value);
 
   useEffect(() => {
-    if (debounced.trim() !== lastSent.current) {
+    // Only send what the user settled on: right after an external reset (e.g. "Clear filters") the
+    // box is already empty but `debounced` still holds the old term for up to 300 ms, and sending
+    // it would bring the cleared search back.
+    if (debounced === text && debounced.trim() !== lastSent.current) {
       lastSent.current = debounced.trim();
       onSearch(debounced.trim());
     }
-  }, [debounced, onSearch]);
+  }, [debounced, text, onSearch]);
 
   // Follow external URL changes (e.g. "Clear filters") without fighting the user's typing.
   useEffect(() => {

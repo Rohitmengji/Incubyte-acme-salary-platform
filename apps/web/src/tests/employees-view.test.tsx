@@ -100,6 +100,34 @@ describe('EmployeesView', () => {
     expect(router.push).toHaveBeenCalledTimes(1);
   });
 
+  it('does not re-apply a cleared search when the list re-renders straight after "Clear filters"', async () => {
+    mockApi({
+      'GET /employees': async () => {
+        // A short delay so the list re-renders (loading, then data) inside the 300 ms debounce.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { body: page([employee(1)]) };
+      },
+      'GET /reference-data': { body: reference },
+    });
+    setUrl('/employees?search=EMP-000042');
+    renderWithProviders(<EmployeesView />);
+    await screen.findByText('Priya Sharma1');
+    // Like Next.js, the navigation lands a moment after the click rather than synchronously.
+    router.push.mockImplementationOnce((href: string) => {
+      setTimeout(() => setUrl(href), 30);
+    });
+    await userEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(currentUrl().searchParams.get('search')).toBeNull();
+    // The old search must never be sent again, not even briefly (another filter could merge with it).
+    expect(router.replace).not.toHaveBeenCalledWith(
+      expect.stringContaining('search=EMP-000042'),
+      expect.anything(),
+    );
+    await userEvent.selectOptions(screen.getByLabelText('Countries'), 'JP');
+    await waitFor(() => expect(currentUrl().search).toBe('?country=JP'));
+  });
+
   it('"Clear filters" also cancels a search that was typed but not yet sent', async () => {
     mockApi({
       'GET /employees': { body: page([employee(1)]) },
