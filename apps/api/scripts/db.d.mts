@@ -8,3 +8,5 @@ export declare const LOCAL_DB: {
 };
 export declare function start(options?: { quiet?: boolean }): Promise<void>;
 export declare function stop(): Promise<void>;
+/** A setting from the environment, else from apps/api/.env. */
+export declare function setting(name: string): string | undefined;

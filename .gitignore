@@ -1,7 +1,6 @@
 # Dependencies and build output
 node_modules/
-.next/
-.next-e2e/
+.next*/
 dist/
 out/
 coverage/
@@ -32,6 +31,4 @@ blob-report/
 apps/api/src/generated/
 
 # Next.js
-.next/
-.next-e2e/
 playwright/.cache/

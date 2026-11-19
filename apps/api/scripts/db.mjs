@@ -2,9 +2,10 @@
 // Manages the zero-install local PostgreSQL (ADR-0005). Uses the pg_ctl/initdb binaries shipped by
 // the embedded-postgres platform packages so the server keeps running between npm commands.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseEnv } from 'node:util';
 import pg from 'pg';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -12,10 +13,20 @@ export const repoRoot = path.resolve(here, '../../..');
 const dataRoot = path.join(repoRoot, '.data');
 const dataDir = path.join(dataRoot, 'postgres');
 const logFile = path.join(dataRoot, 'postgres.log');
+const envFile = path.resolve(here, '../.env');
+const fileEnv = existsSync(envFile) ? parseEnv(readFileSync(envFile, 'utf8')) : {};
+
+/**
+ * A setting from the environment, else from apps/api/.env (as the README documents). The file is
+ * read here rather than loaded into process.env so callers such as Playwright keep their own env.
+ */
+export function setting(name) {
+  return process.env[name] ?? fileEnv[name];
+}
 
 export const LOCAL_DB = {
   host: 'localhost',
-  port: Number(process.env.LOCAL_PG_PORT ?? 54329),
+  port: Number(setting('LOCAL_PG_PORT') ?? 54329),
   // Local-only credentials for a server bound to localhost; not a secret.
   user: 'acme',
   password: 'acme_local_dev',
@@ -92,7 +103,7 @@ async function ensureDatabases() {
 }
 
 export async function start({ quiet = false } = {}) {
-  if (process.env.EMBEDDED_POSTGRES === '0') {
+  if (setting('EMBEDDED_POSTGRES') === '0') {
     if (!quiet) console.log('EMBEDDED_POSTGRES=0: using DATABASE_URL as configured.');
     return;
   }
