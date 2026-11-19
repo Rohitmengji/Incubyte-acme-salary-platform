@@ -17,6 +17,8 @@ import { authRouter } from './modules/auth/auth.routes.ts';
 import { referenceRouter } from './modules/reference/reference.routes.ts';
 import { EmployeeService } from './modules/employees/employee.service.ts';
 import { employeesRouter } from './modules/employees/employee.routes.ts';
+import { CompensationService } from './modules/compensation/compensation.service.ts';
+import { compensationRouter } from './modules/compensation/compensation.routes.ts';
 
 export interface AppDependencies {
   config: AppConfig;
@@ -45,6 +47,7 @@ export function createApp({
 }: AppDependencies) {
   const authService = new AuthService(prisma, clock, config.sessionTtlMs);
   const employeeService = new EmployeeService(prisma, clock);
+  const compensationService = new CompensationService(prisma, clock);
 
   const app = express();
   app.set('trust proxy', config.trustProxyHops);
@@ -98,6 +101,7 @@ export function createApp({
 
   const requireSession = authenticate(authService, config.cookie.name);
   api.use('/reference-data', requireSession, canRead, referenceRouter(prisma));
+  api.use('/employees/:id/compensations', requireSession, compensationRouter(compensationService));
   api.use('/employees', requireSession, employeesRouter(employeeService));
 
   app.use('/api/v1', api);
