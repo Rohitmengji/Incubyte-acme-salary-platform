@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { createPrismaClient } from '../../src/db.ts';
-import { seedDatabase } from './seed.ts';
+import { seedDatabase, seedPasswordProblems } from './seed.ts';
 import { datasetChecksum, generateEmployees } from './generator.ts';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
@@ -16,8 +16,9 @@ if (!databaseUrl || !managerPassword || !viewerPassword) {
   );
   process.exit(1);
 }
-if (process.env.NODE_ENV === 'production' && /Demo-2026!$/.test(managerPassword + viewerPassword)) {
-  console.error('Refusing to seed demo passwords into a production environment.');
+const unsafe = seedPasswordProblems(process.env.NODE_ENV, managerPassword, viewerPassword);
+if (unsafe.length) {
+  console.error(`Refusing to seed: ${unsafe.join(' ')}`);
   process.exit(1);
 }
 

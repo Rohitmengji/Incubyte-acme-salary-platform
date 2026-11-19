@@ -17,6 +17,28 @@ export interface SeedResult {
   seededEmployeesPresent: number;
 }
 
+/** The local demo passwords shipped in .env.example; never acceptable outside development. */
+export const DEMO_PASSWORDS = ['Manager-Demo-2026!', 'Viewer-Demo-2026!'];
+
+/**
+ * In production each seeded account must have its own non-demo password of at least 12 characters.
+ * Returns human-readable problems (empty = OK).
+ */
+export function seedPasswordProblems(
+  nodeEnv: string | undefined,
+  ...passwords: string[]
+): string[] {
+  if (nodeEnv !== 'production') return [];
+  const problems: string[] = [];
+  passwords.forEach((password, i) => {
+    const label = i === 0 ? 'SEED_MANAGER_PASSWORD' : 'SEED_VIEWER_PASSWORD';
+    if (DEMO_PASSWORDS.includes(password)) problems.push(`${label} is a published demo password.`);
+    else if (password.length < 12)
+      problems.push(`${label} must be at least 12 characters in production.`);
+  });
+  return problems;
+}
+
 const date = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 
 export const SEED_USERS = {
@@ -89,7 +111,9 @@ export async function seedDatabase(
     const passwordHash = await hashPassword(password);
     await prisma.appUser.upsert({
       where: { email: user.email },
-      update: { passwordHash, role: user.role, displayName: user.displayName, isActive: true },
+      // Re-seeding refreshes the demo password but never re-enables a disabled account or restores
+      // a changed role: revoking access must survive a routine re-seed.
+      update: { passwordHash, displayName: user.displayName },
       create: { ...user, passwordHash },
     });
   }

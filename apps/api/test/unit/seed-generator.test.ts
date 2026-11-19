@@ -6,6 +6,7 @@ import {
   deterministicUuid,
   generateEmployees,
 } from '../../prisma/seed/generator.ts';
+import { seedPasswordProblems } from '../../prisma/seed/seed.ts';
 
 const MINOR_UNITS = Object.fromEntries(CURRENCIES.map((c) => [c.code, c.minorUnits]));
 
@@ -72,5 +73,26 @@ describe('seed generator', () => {
     const id = deterministicUuid('EMP-000001');
     expect(id).toBe(deterministicUuid('EMP-000001'));
     expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+});
+
+describe('seedPasswordProblems', () => {
+  it('allows the demo passwords outside production', () => {
+    expect(seedPasswordProblems('development', 'Manager-Demo-2026!', 'Viewer-Demo-2026!')).toEqual(
+      [],
+    );
+  });
+
+  it('refuses a demo password for either account in production', () => {
+    // Regression: the old check tested the concatenation and missed a demo manager password.
+    expect(
+      seedPasswordProblems('production', 'Manager-Demo-2026!', 'A-strong-unique-pass-1'),
+    ).toEqual(['SEED_MANAGER_PASSWORD is a published demo password.']);
+    expect(seedPasswordProblems('production', 'A-strong-unique-pass-1', 'short')).toEqual([
+      'SEED_VIEWER_PASSWORD must be at least 12 characters in production.',
+    ]);
+    expect(
+      seedPasswordProblems('production', 'A-strong-unique-pass-1', 'Another-strong-pass-2'),
+    ).toEqual([]);
   });
 });

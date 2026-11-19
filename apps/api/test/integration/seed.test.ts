@@ -59,4 +59,21 @@ describe('seedDatabase', () => {
     expect(res.status).toBe(200);
     expect(res.body.user.role).toBe('HR_MANAGER');
   });
+
+  it('does not re-enable a disabled account or restore its role when re-run', async () => {
+    await prisma.appUser.update({
+      where: { email: SEED_USERS.manager.email },
+      data: { isActive: false, role: 'HR_VIEWER' },
+    });
+    await seedDatabase(prisma, options);
+    const user = await prisma.appUser.findUniqueOrThrow({
+      where: { email: SEED_USERS.manager.email },
+    });
+    expect(user).toMatchObject({ isActive: false, role: 'HR_VIEWER' });
+    const { app } = buildApp();
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: SEED_USERS.manager.email, password: options.managerPassword });
+    expect(res.status).toBe(401);
+  });
 });
