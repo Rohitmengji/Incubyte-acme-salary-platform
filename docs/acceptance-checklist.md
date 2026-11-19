@@ -69,7 +69,7 @@ The latest verified run is [44532945268](https://github.com/Rohitmengji/Incubyte
 | Reviewer path (`windows-latest`) | ✅     | Seed 6.0 s (checksum matches), 99 integration tests, build. Fixed from a hang in `pg_ctl start`. |
 | End-to-end (Playwright)          | ✅     | Seed 5.1 s (checksum matches), 19 passed                                                         |
 
-Commits after `da29a0e` change only documentation. CI also runs on each of them.
+Commits after `da29a0e` change only documentation and `.env.example` comments. The documentation commit `3b46f24` also passed all 5 jobs ([run 44534279838](https://github.com/Rohitmengji/Incubyte-acme-salary-platform/actions/runs/44534279838)).
 
 ## Outstanding
 
