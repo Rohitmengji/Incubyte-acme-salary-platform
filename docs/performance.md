@@ -36,9 +36,33 @@ Method: the production bundle (`npm run build && npm start`), an authenticated s
 | Employee detail                                             | 1.4 ms | 2.2 ms  |
 | Salary history                                              | 1.2 ms | 1.5 ms  |
 
-The target was a p95 under 200 ms for the employee list ([requirements](./requirements.md)). It's met with a lot of headroom. The dashboard and analytics endpoints don't exist yet and haven't been measured.
+The target was a p95 under 200 ms for the employee list ([requirements](./requirements.md)). It's met with a lot of headroom.
 
 **A measurement mistake I caught.** The first benchmark run exceeded the API's own rate limit of 600 requests per minute per IP. The last scenarios were then measuring fast `429` responses: salary history looked like 0.3 ms. The table above comes from a second run with the limit raised for the benchmark only, and with each status code asserted.
+
+## Analytics and export latency
+
+Method: the API dev server (`tsx`, same database as above), an authenticated session, 3 warm-up requests, then 30 sequential requests (10 for the export), all asserted to return `200`. Measured on 2026-11-19.
+
+| Endpoint                                                                                                    | p50          | p95          |
+| ----------------------------------------------------------------------------------------------------------- | ------------ | ------------ |
+| `GET /analytics/summary` (status counts, headcount by country, per-currency and normalised stats, FX check) | 21.1 ms      | 32.1 ms      |
+| `GET /analytics/distribution` (department, normalised)                                                      | 24.2 ms      | 25.0 ms      |
+| `GET /analytics/distribution` (country, local currencies)                                                   | 25.1 ms      | 25.5 ms      |
+| `GET /analytics/distribution` (job title, local currencies)                                                 | 24.8 ms      | 25.5 ms      |
+| `GET /analytics/histogram` (USD) / (JPY)                                                                    | 7.3 / 4.8 ms | 8.3 / 5.3 ms |
+| `GET /analytics/trends?months=24`                                                                           | 292.4 ms     | 302.2 ms     |
+| `GET /analytics/recent-changes`                                                                             | 2.0 ms       | 2.6 ms       |
+| `GET /exports/employees.csv` (all 10,000 rows with current salaries, streamed)                              | 204.4 ms     | 210.8 ms     |
+
+The dashboard loads summary, distribution, histogram and recent changes in parallel, so it waits mostly on the slowest of these (about 30 ms). That's well inside the 500 ms target.
+
+**Trends: a plan problem found and fixed.** The trend computes an exact median for the people employed at each of 24 month ends, which means about 212,000 joined rows.
+
+- The first version took **about 550 ms**. `EXPLAIN ANALYZE` showed PostgreSQL inlining the `months` CTE, so it re-evaluated the month-end expression for every joined row. It also showed the sort spilling to disk (external merge, 4.4 MB).
+- Marking the CTE `MATERIALIZED` brought it to **about 310–325 ms** in `EXPLAIN` and about 300 ms p95 end to end.
+- Raising `work_mem` to 32 MB removed the disk spill but saved only about 15 ms, so it wasn't kept. Fewer tuning knobs means less to explain and maintain.
+- If trends ever need to be faster, the next step would be a monthly snapshot table maintained on write, but that isn't justified at this size (ADR-0004).
 
 ## Query plans (`EXPLAIN ANALYZE`, 10k employees)
 
@@ -60,8 +84,14 @@ The target was a p95 under 200 ms for the employee list ([requirements](./requir
 - **Only the needed columns are selected** for list and detail responses. `select` is used throughout, never `include` of whole models.
 - **No cache.** Nothing above is slow enough to justify one, and salary data must be fresh. Responses are sent with `Cache-Control: no-store`.
 
+## Frontend
+
+- **No data volume in the browser.** Lists and analytics only ever carry one page (≤ 100 rows) or aggregated rows. The 10,000 employees are never sent to the browser.
+- **Search** is debounced by 300 ms, and superseded requests are cancelled with `AbortSignal`, so fast typing doesn't queue requests. A component test asserts that typing a whole term sends one search request, not one per keystroke.
+- **No layout jump while paging.** TanStack Query's `placeholderData` keeps the current page visible while the next one loads.
+- **Static by default.** The production build pre-renders every route except `/employees/[id]`. Data is fetched on the client through the same-origin `/api` path.
+
 ## Not measured yet
 
-- Dashboard and analytics queries (the next backend phase)
-- Frontend rendering and bundle size (the frontend phase)
-- Behaviour under concurrent load. The numbers above are sequential, from a single client.
+- Frontend bundle size and Core Web Vitals. Next.js 16 no longer prints per-route sizes during `next build`, and no lab measurement (Lighthouse) has been taken yet.
+- Behaviour under concurrent load. All numbers above are sequential, from a single client.

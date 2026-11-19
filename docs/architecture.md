@@ -263,7 +263,7 @@ sequenceDiagram
   participant A as API (ImportService)
   participant DB as PostgreSQL
   HR->>W: Choose a CSV file
-  W->>A: POST /api/v1/imports (multipart, max 4 MB, max 10,000 rows)
+  W->>A: POST /api/v1/imports, JSON with fileName and CSV text, max 4 MB and 10,000 rows
   A->>A: Parse, normalise, validate each row (shared row schema)
   A->>DB: Find existing employee IDs and emails
   A->>DB: Insert import_batch as PREVIEWED with valid rows and row errors
@@ -284,6 +284,8 @@ sequenceDiagram
   - A UTF-8 BOM and CRLF line endings are accepted.
 - **Size limits.** The 4 MB limit keeps uploads under Vercel's 4.5 MB request-body cap.
 - **Export safety.** Exports neutralise cells that start with `=`, `+`, `-`, `@`, tab or CR, so spreadsheets can't run them as formulas.
+
+**Upload format.** The browser reads the file and sends its text in a JSON body (`{ fileName, content }`) rather than `multipart/form-data`. The API stays JSON-only: a `multipart` form is a "simple" cross-site request, so this keeps the CSRF defence uniform, and it needs no upload library. That route alone has a 5 MB body limit; everything else stays at 100 kB.
 
 ## 7. API surface (`/api/v1`, JSON, `problem+json` errors)
 
@@ -328,26 +330,49 @@ Analytics are computed on read in PostgreSQL using parameterised `$queryRaw` tag
 
 ## 9. Frontend design
 
+**Routes** (`apps/web/src/app`) are thin; each screen lives in `src/features/*`.
+
+| Route             | Screen                                           |
+| ----------------- | ------------------------------------------------ |
+| `/login`          | Sign-in                                          |
+| `/dashboard`      | KPIs, pay by currency, charts, recent changes    |
+| `/employees`      | Searchable, filterable and sortable list         |
+| `/employees/new`  | New employee with starting salary                |
+| `/employees/[id]` | Profile, salary history, audit trail and dialogs |
+| `/analytics`      | Distribution, trend and histograms               |
+| `/imports`        | CSV import and export, manager only              |
+
+`src/proxy.ts` (the Next 16 equivalent of middleware) only redirects visitors without a session cookie to `/login?next=…`. The API remains the security boundary.
+
 - **State ownership:**
-  - **URL search params** hold list filters, sort and page, so a view can be shared and back/forward works.
-  - **TanStack Query** holds server state. Query keys come from the filters, each request gets an `AbortSignal` so stale requests are cancelled, and `placeholderData` keeps the previous page on screen while the next loads, so the table doesn't flash.
-  - **React Hook Form with the shared Zod schemas** holds form state.
-  - **`useState`** holds local UI state.
-  - There's no global client store because nothing needs one.
-- **Search** waits 300 ms after typing stops and resets to page 1 when filters change.
+  - **URL search params** hold list filters, sort and page, so a view can be shared and bookmarked, and back/forward works. Any filter change resets to page 1, and a tampered URL falls back to defaults.
+  - **TanStack Query** holds server state. All query keys live in one module (`src/lib/queries.ts`) so every mutation invalidates exactly what it affects: the employee, the lists and all analytics. Each request receives an `AbortSignal`, so superseded searches are cancelled, and `placeholderData` keeps the previous page on screen while the next loads.
+  - **React Hook Form with the shared Zod schemas** holds form state, so the client and server reject the same inputs.
+  - **`useState`** holds local UI state. There's no global client store because nothing needs one.
+- **Search** is debounced by 300 ms. The search box re-syncs with the URL without dropping keystrokes typed during the debounce window.
 - **Mutations:**
-  - Salary writes aren't optimistic, because the server works out the neighbouring periods. The UI shows a pending state, disables the submit button, then invalidates the affected queries.
-  - A 409 shows a "this record changed, reload" message.
+  - Salary writes aren't optimistic, because the server works out the neighbouring periods. Buttons are disabled while a request is pending, which prevents double submits.
+  - Server field errors (`problem.errors`) are mapped onto the matching form fields. For example, "a salary period already starts on this date" lands under _Effective from_.
+  - A 409 `stale-version` error offers to close the dialog and reload.
+  - Edits and corrections send **only the changed fields** together with the `version` that was read.
+- **Money display.** `Intl.NumberFormat` formats the API's decimal strings directly, using as many decimals as the server sent. A value like `999999999999999.99` is shown exactly; a float would round it. Chart coordinates are the only place amounts become numbers, and only for drawing.
 - **Design system:**
-  - Tailwind v4 tokens are set in CSS with `@theme`. The palette is restrained: slate neutrals, one brand accent, and semantic success, warning and danger colours, all checked for AA contrast.
-  - Money columns use tabular numbers and are right-aligned.
-  - On mobile the filters move into a sheet and the table scrolls horizontally with the first column pinned.
-  - `Intl.NumberFormat` formats money from decimal strings, so no float conversion happens.
-- **Accessibility:**
-  - shadcn/Radix provides focus-trapped dialogs and dropdowns that work with the keyboard. Form labels are visible, and errors are linked with `aria-describedby`.
-  - Toasts and table updates announce through `aria-live`. A "skip to content" link is provided.
-  - Every chart has a "view as table" option.
-  - Playwright runs axe checks on the key pages.
+  - Tailwind v4 tokens live in `globals.css` via `@theme`: slate neutrals, one deep-teal brand scale, semantic status colours, and colour-blind-friendly chart colours.
+  - Numbers use tabular figures and are right-aligned.
+  - Components follow shadcn conventions (cva variants, `cn`) on top of Radix primitives: Dialog, Tabs, ToggleGroup, DropdownMenu and Slot.
+- **Responsive layout:**
+  - Below `lg` the sidebar becomes a menu button that opens a dialog.
+  - Filters reflow into a 2×2 grid, and tables scroll inside their card.
+  - Grid and flex children use `min-w-0` so wide tables never widen the page. The Playwright mobile test checks this.
+- **Accessibility (target: WCAG 2.2 AA):**
+  - Semantic landmarks and a skip link.
+  - Visible labels on every input. Errors are linked with `aria-describedby`, invalid fields get `aria-invalid`, and form-level errors use `role=alert`.
+  - Native `<select>` for filters, because it gives the most reliable keyboard and screen reader support.
+  - Sortable headers use `aria-sort`.
+  - Every scrollable table region is focusable and named.
+  - Every chart is a `figure` with a text summary and a native `<details>` data table.
+  - Focus is visible everywhere.
+  - Playwright runs axe (WCAG 2.0, 2.1 and 2.2 A/AA rules) on six pages and fails on any serious or critical violation.
 
 ## 10. Security model
 
@@ -383,6 +408,7 @@ Tests that depend on dates inject a `Clock`, and seed data is generated from a f
 | Local, default (no Docker) | `npm run setup` starts embedded PostgreSQL 18 on port 54329 (data in `.data/`, git-ignored), creates the dev and test databases, migrates and seeds. `npm run dev` starts the API on :4000 and the web app on :3000.                    | Running it on this Mac (macOS arm64)                                                                 |
 | Docker Compose             | `postgres:18-alpine` + `api` + `web` with a one-off migrate-and-seed service: `docker compose up --build`                                                                                                                               | CI only. Docker isn't installed on the development machine, and this is stated honestly in the docs. |
 | CI (GitHub Actions)        | Lint, typecheck and unit tests. A **reviewer-path job** on Ubuntu, macOS and Windows does a clean `npm ci`, `npm run setup` against embedded PostgreSQL, then the integration tests. Playwright. Docker build and a compose smoke test. | First run happens after you approve pushing to GitHub                                                |
+| End-to-end (Playwright)    | `npm run test:e2e` starts its own API (:4100) and web app (:3100) on an isolated `acme_e2e` database. Global setup rebuilds that database from the migrations and seeds the full 10,000 employees. Development data is never touched.   | Locally (16 tests); a CI job is defined                                                              |
 | Deployment (secondary)     | Vercel hosts the web app and the API (as a Vercel Function), with Neon Postgres from the Vercel Marketplace                                                                                                                             | Needs Rohit's Vercel account. No URL is claimed until it has been deployed and checked.              |
 
 **Deployment caveats to resolve in the deployment phase:**
@@ -394,12 +420,14 @@ Tests that depend on dates inject a `Clock`, and seed data is generated from a f
 
 ## 13. Risks to verify early
 
-**Status at the end of the backend foundation:**
+**Status after the frontend phase:**
 
 - Risk 1 is verified: the drift probe is empty, and the catalog and behaviour tests pass.
 - Risk 4 is verified: Prisma 7 does **not** escape `%` and `_` in `contains`. The API escapes them, and a test fails if that escaping is removed.
 - Risk 2 is verified on macOS arm64. Linux and Windows wait for the first CI run.
-- Risks 3, 5 and 6 are still open, because they depend on the web app or the deployment.
+- Risk 5 is verified: TanStack Table 8 works with React 19.3. The only finding is a React Compiler compatibility lint warning; the app doesn't use the compiler.
+- Risk 6 is handled for local development: `next dev` reads `API_ORIGIN` at startup, so the e2e stack points at :4100. A production build captures `API_ORIGIN` at build time, so the deployment has to set it at build time.
+- Risk 3 (client IP behind the proxy, for rate limiting) is still open until the deployment phase.
 
 1. **Prisma and custom SQL.** Prisma ignores exclusion constraints and triggers, so a clean `prisma migrate diff` **can't** prove they still exist. Instead, integration tests check PostgreSQL's catalog (`pg_constraint` with `contype = 'x'`, `pg_trigger`, `pg_extension`). Behaviour tests also confirm that an overlap is rejected at commit and that `UPDATE` or `DELETE` on `audit_log` is rejected. These run after every migration.
 2. **embedded-postgres on all platforms.** The npm package's versions are labelled beta, so the exact version is pinned. It's verified on macOS arm64 during design, and the CI reviewer-path matrix covers Ubuntu, macOS and Windows. Docker Compose is the fallback.
