@@ -178,6 +178,8 @@ export interface RecentSalaryChange {
   actor: { id: string; displayName: string } | null;
   before: Record<string, string | null> | null;
   after: Record<string, string | null>;
+  /** Currency of the amounts when the change itself did not touch the currency. */
+  currencyCode: string | null;
   correctionReason: string | null;
 }
 

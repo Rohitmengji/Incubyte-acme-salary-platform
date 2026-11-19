@@ -225,7 +225,12 @@ export class CompensationService {
           entityType: 'COMPENSATION',
           entityId: compensationId,
           employeeId,
-          changes: { ...changes, correctionReason: input.correctionReason },
+          // The diff omits unchanged fields; keep the currency so the amounts stay readable.
+          changes: {
+            ...changes,
+            currencyCode: updated.currencyCode,
+            correctionReason: input.correctionReason,
+          },
         });
         return this.toRecord(updated);
       })

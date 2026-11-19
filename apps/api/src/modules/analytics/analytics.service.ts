@@ -222,7 +222,7 @@ export class AnalyticsService {
     if (!currency) {
       const counts = await this.prisma.$queryRaw<{ bucket: number; count: number }[]>`
         WITH ${fxCte(asOf)}
-        SELECT LEAST(floor(c.amount * fx.rate_to_reporting / ${HISTOGRAM_USD_WIDTH})::int, ${HISTOGRAM_USD_BUCKETS - 1}::int) AS bucket,
+        SELECT LEAST(floor(c.amount * fx.rate_to_reporting / ${HISTOGRAM_USD_WIDTH}), ${HISTOGRAM_USD_BUCKETS - 1})::int AS bucket,
                count(*)::int AS count
         FROM employee e
         JOIN compensation c ON ${paidOn(date)}
@@ -243,31 +243,47 @@ export class AnalyticsService {
       };
     }
 
-    const range = await this.prisma.$queryRaw<{ min: string | null; max: string | null }[]>`
-      SELECT min(c.amount)::text AS min, max(c.amount)::text AS max
-      FROM employee e JOIN compensation c ON ${paidOn(date)}
-      WHERE ${employedOn(date)} AND c.currency_code = ${currency}`;
-    const { min, max } = range[0] ?? { min: null, max: null };
-    if (min === null || max === null) return { asOf, currency, normalized: false, fx, buckets: [] };
-
-    // Bucket bounds are display labels, so a "nice" whole-number width is derived from the range.
-    const width = niceWidth((Number(max) - Number(min)) / HISTOGRAM_LOCAL_BUCKETS);
-    const start = Math.floor(Number(min) / width) * width;
-    const count = Math.max(1, Math.floor((Number(max) - start) / width) + 1);
-    const counts = await this.prisma.$queryRaw<{ bucket: number; count: number }[]>`
-      SELECT floor((c.amount - ${start}::numeric) / ${width}::numeric)::int AS bucket, count(*)::int AS count
-      FROM employee e JOIN compensation c ON ${paidOn(date)}
-      WHERE ${employedOn(date)} AND c.currency_code = ${currency}
-      GROUP BY 1 ORDER BY 1`;
+    // Range and counts must describe the same data, so both run in one REPEATABLE READ snapshot
+    // (read-only, so it never fails with a serialization error). Bounds use exact decimals: a
+    // NUMERIC(19,4) salary does not fit in a double, and a rounded bound would drop it from every bucket.
+    const { start, width, counts } = await this.prisma.$transaction(
+      async (tx) => {
+        const range = await tx.$queryRaw<{ min: string | null; max: string | null }[]>`
+          SELECT min(c.amount)::text AS min, max(c.amount)::text AS max
+          FROM employee e JOIN compensation c ON ${paidOn(date)}
+          WHERE ${employedOn(date)} AND c.currency_code = ${currency}`;
+        const { min, max } = range[0] ?? { min: null, max: null };
+        if (min === null || max === null) return { start: null, width: null, counts: [] };
+        const lo = new Prisma.Decimal(min);
+        const hi = new Prisma.Decimal(max);
+        // A "nice" whole-number width only needs to be approximately range/12, so a double is fine here.
+        const width = new Prisma.Decimal(
+          niceWidth(hi.minus(lo).toNumber() / HISTOGRAM_LOCAL_BUCKETS),
+        );
+        const start = lo.dividedToIntegerBy(width).times(width);
+        const counts = await tx.$queryRaw<{ bucket: number; count: number }[]>`
+          SELECT floor((c.amount - ${start.toFixed()}::numeric) / ${width.toFixed()}::numeric)::int AS bucket,
+                 count(*)::int AS count
+          FROM employee e JOIN compensation c ON ${paidOn(date)}
+          WHERE ${employedOn(date)} AND c.currency_code = ${currency}
+          GROUP BY 1 ORDER BY 1`;
+        return { start, width, counts };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+    if (start === null || width === null) {
+      return { asOf, currency, normalized: false, fx, buckets: [] };
+    }
     const byBucket = new Map(counts.map((row) => [row.bucket, row.count]));
+    const length = Math.max(1, ...counts.map((row) => row.bucket + 1));
     return {
       asOf,
       currency,
       normalized: false,
       fx,
-      buckets: Array.from({ length: count }, (_, i) => ({
-        from: String(start + i * width),
-        to: String(start + (i + 1) * width),
+      buckets: Array.from({ length }, (_, i) => ({
+        from: start.plus(width.times(i)).toFixed(),
+        to: start.plus(width.times(i + 1)).toFixed(),
         count: byBucket.get(i) ?? 0,
       })),
     };
@@ -322,13 +338,27 @@ export class AnalyticsService {
         employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true } },
       },
     });
+    type Changes = {
+      before?: Record<string, string | null>;
+      after?: Record<string, string | null>;
+      currencyCode?: string;
+      correctionReason?: string;
+    };
+    const changesOf = (row: (typeof rows)[number]) => (row.changes ?? {}) as Changes;
+    // Older correction entries recorded only the changed fields; fall back to the record's currency.
+    const missing = rows
+      .filter((row) => !changesOf(row).after?.currencyCode && !changesOf(row).currencyCode)
+      .map((row) => row.entityId);
+    const stored = missing.length
+      ? await this.prisma.compensation.findMany({
+          where: { id: { in: missing } },
+          select: { id: true, currencyCode: true },
+        })
+      : [];
+    const currencyById = new Map(stored.map((c) => [c.id, c.currencyCode]));
     return rows.flatMap((row) => {
       if (!row.employee) return [];
-      const changes = (row.changes ?? {}) as {
-        before?: Record<string, string | null>;
-        after?: Record<string, string | null>;
-        correctionReason?: string;
-      };
+      const changes = changesOf(row);
       return [
         {
           id: row.id.toString(),
@@ -338,6 +368,11 @@ export class AnalyticsService {
           actor: row.actor,
           before: changes.before ?? null,
           after: changes.after ?? {},
+          currencyCode:
+            changes.after?.currencyCode ??
+            changes.currencyCode ??
+            currencyById.get(row.entityId) ??
+            null,
           correctionReason: changes.correctionReason ?? null,
         },
       ];

@@ -318,6 +318,8 @@ describe('GET /analytics/recent-changes', () => {
       employee: { employeeCode: 'EMP-B' },
       before: { amount: '130000.00' },
       after: { amount: '131000.00' },
+      // Only the amount changed, but the currency is still given so the amounts can be shown.
+      currencyCode: 'USD',
       correctionReason: 'Approved figure',
       actor: { displayName: 'Test manager' },
     });
@@ -327,5 +329,49 @@ describe('GET /analytics/recent-changes', () => {
 describe('access', () => {
   it('requires a session', async () => {
     expect((await request(buildApp().app).get('/api/v1/analytics/summary')).status).toBe(401);
+  });
+});
+
+// Runs last: it adds extreme (but valid) salaries that would change the hand-computed totals above.
+describe('histogram boundaries', () => {
+  const addEmployee = async (code: string, amount: string, currencyCode: string) => {
+    const employee = await prisma.employee.create({
+      data: {
+        employeeCode: `EMP-${code}`,
+        firstName: code,
+        lastName: 'Fixture',
+        email: `${code.toLowerCase()}@fixture.example`,
+        countryCode: 'DE',
+        departmentId: REF.engineering,
+        jobTitleId: REF.softwareEngineer,
+        hireDate: new Date('2020-01-01'),
+        status: 'ACTIVE',
+      },
+    });
+    await prisma.compensation.create({
+      data: {
+        employeeId: employee.id,
+        amount,
+        currencyCode,
+        effectiveFrom: new Date('2020-01-01'),
+        reason: 'NEW_HIRE',
+      },
+    });
+  };
+
+  it('keeps the largest storable salary in a bucket (exact decimal bounds)', async () => {
+    await addEmployee('MAXEUR', '999999999999999.9999', 'EUR');
+    const body = await get('/histogram?currency=EUR');
+    expect(body.buckets.reduce((sum: number, b: { count: number }) => sum + b.count, 0)).toBe(1);
+    const bucket = body.buckets.find((b: { count: number }) => b.count === 1);
+    expect(BigInt(bucket.from.split('.')[0]) <= 999999999999999n).toBe(true);
+  });
+
+  it('counts a very large normalised salary in the open-ended top band instead of failing', async () => {
+    await addEmployee('HUGEUSD', '50000000000000', 'USD');
+    const body = await get('/histogram');
+    // Nobody in the fixture earns 300k+ USD, so the top band holds only the new salary.
+    expect(body.buckets.at(-1)).toMatchObject({ from: '300000', to: null, count: 1 });
+    expect(body.buckets.reduce((sum: number, b: { count: number }) => sum + b.count, 0)).toBe(11);
   });
 });

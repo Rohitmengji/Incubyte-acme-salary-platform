@@ -184,6 +184,8 @@ describe('salary corrections', () => {
     expect(audit.changes).toEqual({
       before: { amount: '1800000.00' },
       after: { amount: '1850000.00' },
+      // Unchanged currency is kept as context so the amounts can be shown later.
+      currencyCode: 'INR',
       correctionReason: 'Offer letter typo',
     });
   });
