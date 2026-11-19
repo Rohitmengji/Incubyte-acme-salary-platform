@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "setup": "node scripts/setup.mjs",
-    "dev": "node scripts/db.mjs start && tsx watch --env-file-if-exists=.env src/server.ts",
+    "dev": "node scripts/db.mjs start && npm run dev:api",
     "start": "node --env-file-if-exists=.env dist/server.js",
     "build": "node scripts/build.mjs",
     "db:start": "node scripts/db.mjs start",
@@ -18,7 +18,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration"
+    "test:integration": "vitest run --project integration",
+    "dev:api": "tsx watch --env-file-if-exists=.env src/server.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "2.2.2",

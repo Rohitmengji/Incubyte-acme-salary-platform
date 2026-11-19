@@ -1,12 +1,26 @@
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/generated/**', '.data/**', 'coverage/**'] },
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/generated/**',
+      '.data/**',
+      'coverage/**',
+      '**/.next/**',
+      '**/.next-e2e/**',
+      '**/next-env.d.ts',
+      '**/playwright-report/**',
+      '**/test-results/**',
+    ],
+  },
   js.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
@@ -27,7 +41,12 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/test/**/*.ts', '**/*.test.ts'],
+    files: ['apps/web/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: { ...reactHooks.configs.recommended.rules },
+  },
+  {
+    files: ['**/test/**/*.ts', '**/*.test.{ts,tsx}', 'e2e/**/*.ts'],
     rules: {
       // Supertest response bodies are untyped JSON.
       '@typescript-eslint/no-unsafe-member-access': 'off',

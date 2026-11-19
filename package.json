@@ -9,12 +9,13 @@
   },
   "workspaces": [
     "packages/shared",
-    "apps/api"
+    "apps/api",
+    "apps/web"
   ],
   "scripts": {
     "setup": "npm run setup -w @acme/api",
-    "dev": "npm run dev -w @acme/api",
-    "build": "npm run build -w @acme/api",
+    "dev": "npm run db:start && concurrently --kill-others-on-fail --names api,web --prefix-colors cyan,magenta \"npm run dev:api -w @acme/api\" \"npm run dev -w @acme/web\"",
+    "build": "npm run build -w @acme/api && npm run build -w @acme/web",
     "db:start": "npm run db:start -w @acme/api",
     "db:stop": "npm run db:stop -w @acme/api",
     "db:reset": "npm run db:reset -w @acme/api",
@@ -22,14 +23,19 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p tsconfig.json",
     "test": "npm run test --workspaces --if-present",
     "test:unit": "npm run test:unit --workspaces --if-present",
-    "test:integration": "npm run test:integration -w @acme/api"
+    "test:integration": "npm run test:integration -w @acme/api",
+    "start": "concurrently --kill-others --names api,web --prefix-colors cyan,magenta \"npm run start -w @acme/api\" \"npm run start -w @acme/web\"",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.65.1",
     "@types/node": "26.6.6",
+    "concurrently": "10.0.7",
     "eslint": "10.15.0",
     "globals": "17.14.0",
     "prettier": "3.10.1",
