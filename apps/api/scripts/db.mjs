@@ -115,18 +115,32 @@ export async function start({ quiet = false } = {}) {
       await initialise();
     }
     const { pg_ctl } = await binaries();
-    run(pg_ctl, [
-      'start',
-      '-D',
-      dataDir,
-      '-l',
-      logFile,
-      '-w',
-      '-t',
-      '60',
-      '-o',
-      `-p ${LOCAL_DB.port} -c listen_addresses=localhost`,
-    ]);
+    // Not piped: on Windows the server that pg_ctl launches inherits pipe handles, so spawnSync
+    // would wait for output that never ends while PostgreSQL keeps running. Output goes to logFile.
+    const started = spawnSync(
+      pg_ctl,
+      [
+        'start',
+        '-D',
+        dataDir,
+        '-l',
+        logFile,
+        '-w',
+        '-t',
+        '60',
+        '-o',
+        `-p ${LOCAL_DB.port} -c listen_addresses=localhost`,
+      ],
+      { stdio: 'ignore', windowsHide: true },
+    );
+    if (started.status !== 0) {
+      const log = existsSync(logFile)
+        ? readFileSync(logFile, 'utf8').split(/\r?\n/).slice(-20)
+        : [];
+      throw new Error(
+        `pg_ctl start failed (exit ${started.status ?? started.signal}). Last lines of ${logFile}:\n${log.join('\n')}`,
+      );
+    }
     if (!quiet) console.log(`Local PostgreSQL started on localhost:${LOCAL_DB.port}.`);
   } else if (!quiet) {
     console.log(`Local PostgreSQL already running on localhost:${LOCAL_DB.port}.`);
