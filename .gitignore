@@ -26,3 +26,6 @@ blob-report/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Generated Prisma client (created by `prisma generate` on install)
+apps/api/src/generated/
