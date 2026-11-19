@@ -31,6 +31,13 @@ enum CompensationReason {
   @@map("compensation_reason")
 }
 
+enum ImportStatus {
+  PREVIEWED
+  COMMITTED
+
+  @@map("import_status")
+}
+
 enum UserRole {
   HR_MANAGER
   HR_VIEWER
@@ -165,6 +172,7 @@ model AppUser {
   sessions      Session[]
   auditEvents   AuditLog[]
   compensations Compensation[]
+  importBatches ImportBatch[]
 
   @@map("app_user")
 }
@@ -202,4 +210,28 @@ model AuditLog {
   @@index([employeeId, occurredAt(sort: Desc)])
   @@index([entityType, occurredAt(sort: Desc)])
   @@map("audit_log")
+}
+
+/// CSV import: validated once at upload (preview), committed atomically later. Architecture §6.
+model ImportBatch {
+  id            String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  uploadedById  String       @map("uploaded_by_id") @db.Uuid
+  fileName      String       @map("file_name") @db.VarChar(255)
+  fileSha256    String       @map("file_sha256") @db.Char(64)
+  status        ImportStatus @default(PREVIEWED)
+  totalRows     Int          @map("total_rows")
+  validRows     Int          @map("valid_rows")
+  invalidRows   Int          @map("invalid_rows")
+  duplicateRows Int          @map("duplicate_rows")
+  /// Normalised rows ready to insert (validated against the schema and reference data).
+  validPayload  Json         @map("valid_payload")
+  rowErrors     Json         @map("row_errors")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt     DateTime     @map("expires_at") @db.Timestamptz(3)
+  committedAt   DateTime?    @map("committed_at") @db.Timestamptz(3)
+
+  uploadedBy AppUser @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([uploadedById, createdAt(sort: Desc)])
+  @@map("import_batch")
 }

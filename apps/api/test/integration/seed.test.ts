@@ -12,7 +12,7 @@ describe('seedDatabase', () => {
 
   beforeAll(async () => {
     await prisma.$executeRawUnsafe(
-      `TRUNCATE audit_log, session, compensation, employee, exchange_rate, app_user, job_title, department, country, currency RESTART IDENTITY CASCADE`,
+      `TRUNCATE import_batch, audit_log, session, compensation, employee, exchange_rate, app_user, job_title, department, country, currency RESTART IDENTITY CASCADE`,
     );
   });
   afterAll(() => prisma.$disconnect());

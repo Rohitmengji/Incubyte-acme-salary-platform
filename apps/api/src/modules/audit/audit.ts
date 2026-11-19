@@ -8,7 +8,9 @@ export type AuditAction =
   | 'COMPENSATION_CREATED'
   | 'COMPENSATION_CORRECTED'
   /** A neighbouring period's end date moved automatically because of another change. */
-  | 'COMPENSATION_PERIOD_ADJUSTED';
+  | 'COMPENSATION_PERIOD_ADJUSTED'
+  | 'IMPORT_COMMITTED'
+  | 'EMPLOYEES_EXPORTED';
 
 export interface Actor {
   userId: string;
@@ -17,9 +19,9 @@ export interface Actor {
 
 export interface AuditEntry {
   action: AuditAction;
-  entityType: 'EMPLOYEE' | 'COMPENSATION';
+  entityType: 'EMPLOYEE' | 'COMPENSATION' | 'IMPORT' | 'EXPORT';
   entityId: string;
-  employeeId: string;
+  employeeId: string | null;
   changes: Prisma.InputJsonObject;
 }
 

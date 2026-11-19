@@ -61,7 +61,7 @@ let passwordHashes: Promise<Record<keyof typeof USERS, string>> | undefined;
 /** Empties every table and inserts a small, known reference dataset plus one user per role. */
 export async function resetDatabase(): Promise<void> {
   await prisma.$executeRawUnsafe(
-    `TRUNCATE audit_log, session, compensation, employee, exchange_rate, app_user, job_title, department, country, currency RESTART IDENTITY CASCADE`,
+    `TRUNCATE import_batch, audit_log, session, compensation, employee, exchange_rate, app_user, job_title, department, country, currency RESTART IDENTITY CASCADE`,
   );
   await prisma.currency.createMany({
     data: [

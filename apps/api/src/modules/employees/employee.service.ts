@@ -27,7 +27,7 @@ function currentPeriodFilter(today: Date) {
   } satisfies Prisma.CompensationWhereInput;
 }
 
-function employeeSelect(today: Date) {
+export function employeeSelect(today: Date) {
   return {
     id: true,
     employeeCode: true,
@@ -58,7 +58,7 @@ function employeeSelect(today: Date) {
 
 type EmployeeRow = Prisma.EmployeeGetPayload<{ select: ReturnType<typeof employeeSelect> }>;
 
-function toSummary(row: EmployeeRow): EmployeeSummary {
+export function toSummary(row: EmployeeRow): EmployeeSummary {
   const current = row.compensations[0];
   return {
     id: row.id,
@@ -96,7 +96,9 @@ export function escapeLike(term: string): string {
   return term.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
-function listWhere(query: EmployeeListQuery): Prisma.EmployeeWhereInput {
+export function listWhere(
+  query: Omit<EmployeeListQuery, 'page' | 'pageSize'>,
+): Prisma.EmployeeWhereInput {
   const tokens = (query.search ?? '').split(/\s+/).filter(Boolean).slice(0, 5);
   return {
     // Every token must match a first name, last name or employee ID ("priya sha" finds Priya Sharma).
@@ -111,7 +113,9 @@ function listWhere(query: EmployeeListQuery): Prisma.EmployeeWhereInput {
   };
 }
 
-function listOrderBy(query: EmployeeListQuery): Prisma.EmployeeOrderByWithRelationInput[] {
+export function listOrderBy(
+  query: Pick<EmployeeListQuery, 'sort' | 'order'>,
+): Prisma.EmployeeOrderByWithRelationInput[] {
   const dir = query.order;
   // Every ordering ends with a unique column so pages never overlap or skip rows.
   const byName: Prisma.EmployeeOrderByWithRelationInput[] = [

@@ -21,6 +21,12 @@ import { CompensationService } from './modules/compensation/compensation.service
 import { compensationRouter } from './modules/compensation/compensation.routes.ts';
 import { AnalyticsService } from './modules/analytics/analytics.service.ts';
 import { analyticsRouter } from './modules/analytics/analytics.routes.ts';
+import { ImportService } from './modules/imports/import.service.ts';
+import {
+  exportsRouter,
+  importBodyParser,
+  importsRouter,
+} from './modules/imports/imports.routes.ts';
 
 export interface AppDependencies {
   config: AppConfig;
@@ -51,6 +57,7 @@ export function createApp({
   const employeeService = new EmployeeService(prisma, clock);
   const compensationService = new CompensationService(prisma, clock);
   const analyticsService = new AnalyticsService(prisma, clock);
+  const importService = new ImportService(prisma, clock);
 
   const app = express();
   app.set('trust proxy', config.trustProxyHops);
@@ -97,7 +104,11 @@ export function createApp({
     }),
     originCheck(config.allowedOrigins),
     requireJsonBody,
-    smallJsonBody,
+    // CSV uploads (JSON envelope) get a larger limit; every other body is capped at 100 kB.
+    (req, res, next) =>
+      req.method === 'POST' && req.path === '/imports'
+        ? importBodyParser(req, res, next)
+        : smallJsonBody(req, res, next),
     cookieParser(),
   );
   api.get('/health', health);
@@ -108,6 +119,8 @@ export function createApp({
   api.use('/employees/:id/compensations', requireSession, compensationRouter(compensationService));
   api.use('/employees', requireSession, employeesRouter(employeeService));
   api.use('/analytics', requireSession, analyticsRouter(analyticsService));
+  api.use('/imports', requireSession, importsRouter(importService));
+  api.use('/exports', requireSession, exportsRouter(prisma, clock));
 
   app.use('/api/v1', api);
   app.use(notFoundHandler);
