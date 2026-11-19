@@ -1,0 +1,61 @@
+@import 'tailwindcss';
+
+/*
+ * ACME People design tokens. Restrained palette: slate neutrals, one deep teal brand colour and
+ * semantic status colours. Text/background pairs below meet WCAG 2.2 AA contrast.
+ */
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --color-brand-50: oklch(0.975 0.014 196);
+  --color-brand-100: oklch(0.94 0.035 196);
+  --color-brand-200: oklch(0.88 0.06 196);
+  --color-brand-300: oklch(0.79 0.09 196);
+  --color-brand-400: oklch(0.68 0.11 198);
+  --color-brand-500: oklch(0.58 0.11 200);
+  --color-brand-600: oklch(0.5 0.1 203);
+  --color-brand-700: oklch(0.43 0.085 206);
+  --color-brand-800: oklch(0.36 0.07 210);
+  --color-brand-900: oklch(0.29 0.05 214);
+
+  /* Chart series: brand first, then distinguishable, colour-blind-friendly companions. */
+  --color-chart-1: oklch(0.5 0.1 203);
+  --color-chart-2: oklch(0.7 0.13 70);
+  --color-chart-3: oklch(0.55 0.14 290);
+  --color-chart-4: oklch(0.62 0.13 150);
+  --color-chart-5: oklch(0.6 0.16 25);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 font-sans text-slate-900 antialiased;
+  }
+
+  /* One consistent, highly visible focus indicator for keyboard users. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-600;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
