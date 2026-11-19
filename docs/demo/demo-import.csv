@@ -1,0 +1,6 @@
+Employee ID,First Name,Last Name,Email,Country,Department,Job Title,Hire Date,Salary,Currency,Status
+DEMO-0001,Aarav,Menon,aarav.menon@acme.example,IN,Engineering,Software Engineer II,2026-10-01,2400000,INR,
+DEMO-0002,Yui,Tanaka,yui.tanaka@acme.example,JP,Data,Data Analyst,2026-10-15,7200000,JPY,
+DEMO-0003,Grace,Okafor,grace.okafor@acme.example,US,Product,Product Manager,2026-11-02,148000.00,USD,
+DEMO-0004,Lena,Fischer,lena.fischer@acme.example,DE,Finance,Accountant,2026-11-03,abc,EUR,
+EMP-000001,Duplicate,Row,duplicate.row@acme.example,US,Engineering,Software Engineer I,2026-11-04,90000,USD,
