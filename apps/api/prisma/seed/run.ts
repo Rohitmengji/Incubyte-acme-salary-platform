@@ -16,10 +16,15 @@ if (!databaseUrl || !managerPassword || !viewerPassword) {
   );
   process.exit(1);
 }
-const unsafe = seedPasswordProblems(process.env.NODE_ENV, managerPassword, viewerPassword);
+const unsafe = seedPasswordProblems(process.env, managerPassword, viewerPassword);
 if (unsafe.length) {
   console.error(`Refusing to seed: ${unsafe.join(' ')}`);
   process.exit(1);
+}
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_PASSWORDS === '1') {
+  console.warn(
+    '  ALLOW_DEMO_PASSWORDS=1: published demo passwords are allowed (public demo only).',
+  );
 }
 
 const prisma = createPrismaClient(databaseUrl);

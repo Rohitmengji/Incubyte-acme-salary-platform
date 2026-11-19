@@ -22,18 +22,25 @@ export const DEMO_PASSWORDS = ['Manager-Demo-2026!', 'Viewer-Demo-2026!'];
 
 /**
  * In production each seeded account must have its own non-demo password of at least 12 characters.
+ * A public demo on synthetic data may opt in to the published demo passwords with
+ * ALLOW_DEMO_PASSWORDS=1; any other password must still be at least 12 characters.
  * Returns human-readable problems (empty = OK).
  */
 export function seedPasswordProblems(
-  nodeEnv: string | undefined,
+  env: { NODE_ENV?: string; ALLOW_DEMO_PASSWORDS?: string },
   ...passwords: string[]
 ): string[] {
-  if (nodeEnv !== 'production') return [];
+  if (env.NODE_ENV !== 'production') return [];
+  const allowDemo = env.ALLOW_DEMO_PASSWORDS === '1';
   const problems: string[] = [];
   passwords.forEach((password, i) => {
     const label = i === 0 ? 'SEED_MANAGER_PASSWORD' : 'SEED_VIEWER_PASSWORD';
-    if (DEMO_PASSWORDS.includes(password)) problems.push(`${label} is a published demo password.`);
-    else if (password.length < 12)
+    if (DEMO_PASSWORDS.includes(password)) {
+      if (!allowDemo)
+        problems.push(
+          `${label} is a published demo password (set ALLOW_DEMO_PASSWORDS=1 only for a public demo on synthetic data).`,
+        );
+    } else if (password.length < 12)
       problems.push(`${label} must be at least 12 characters in production.`);
   });
   return problems;

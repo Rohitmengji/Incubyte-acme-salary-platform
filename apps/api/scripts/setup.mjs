@@ -63,7 +63,7 @@ step('Seeding 10,000 synthetic employees (idempotent)', 'tsx/cli', ['prisma/seed
 
 console.log(`
 ✔ Setup complete.
-  Start the API:   npm run dev            (http://localhost:${process.env.PORT ?? 4000})
+  Start the app:   npm run dev            (web http://localhost:3000, API http://localhost:${process.env.PORT ?? 4000})
   Run the tests:   npm test
   Demo sign-in:    hr.manager@acme.example / value of SEED_MANAGER_PASSWORD in apps/api/.env
                    hr.viewer@acme.example  / value of SEED_VIEWER_PASSWORD (read-only)`);

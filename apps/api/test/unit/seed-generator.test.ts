@@ -77,22 +77,42 @@ describe('seed generator', () => {
 });
 
 describe('seedPasswordProblems', () => {
+  const production = { NODE_ENV: 'production' };
+
   it('allows the demo passwords outside production', () => {
-    expect(seedPasswordProblems('development', 'Manager-Demo-2026!', 'Viewer-Demo-2026!')).toEqual(
-      [],
-    );
+    expect(
+      seedPasswordProblems({ NODE_ENV: 'development' }, 'Manager-Demo-2026!', 'Viewer-Demo-2026!'),
+    ).toEqual([]);
   });
 
   it('refuses a demo password for either account in production', () => {
     // Regression: the old check tested the concatenation and missed a demo manager password.
     expect(
-      seedPasswordProblems('production', 'Manager-Demo-2026!', 'A-strong-unique-pass-1'),
-    ).toEqual(['SEED_MANAGER_PASSWORD is a published demo password.']);
-    expect(seedPasswordProblems('production', 'A-strong-unique-pass-1', 'short')).toEqual([
+      seedPasswordProblems(production, 'Manager-Demo-2026!', 'A-strong-unique-pass-1'),
+    ).toEqual([
+      'SEED_MANAGER_PASSWORD is a published demo password (set ALLOW_DEMO_PASSWORDS=1 only for a public demo on synthetic data).',
+    ]);
+    expect(seedPasswordProblems(production, 'A-strong-unique-pass-1', 'short')).toEqual([
       'SEED_VIEWER_PASSWORD must be at least 12 characters in production.',
     ]);
     expect(
-      seedPasswordProblems('production', 'A-strong-unique-pass-1', 'Another-strong-pass-2'),
+      seedPasswordProblems(production, 'A-strong-unique-pass-1', 'Another-strong-pass-2'),
     ).toEqual([]);
+  });
+
+  it('accepts the published demo passwords in production only with an explicit opt-in', () => {
+    const demo = { NODE_ENV: 'production', ALLOW_DEMO_PASSWORDS: '1' };
+    expect(seedPasswordProblems(demo, 'Manager-Demo-2026!', 'Viewer-Demo-2026!')).toEqual([]);
+    // The opt-in is for the published demo values only, not for weak passwords in general.
+    expect(seedPasswordProblems(demo, 'Manager-Demo-2026!', 'short')).toEqual([
+      'SEED_VIEWER_PASSWORD must be at least 12 characters in production.',
+    ]);
+    expect(
+      seedPasswordProblems(
+        { ...demo, ALLOW_DEMO_PASSWORDS: 'true' },
+        'Manager-Demo-2026!',
+        'Viewer-Demo-2026!',
+      ),
+    ).toHaveLength(2);
   });
 });
