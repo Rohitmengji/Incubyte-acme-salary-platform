@@ -296,22 +296,18 @@ describe('GET /analytics/recent-changes', () => {
   it('lists salary changes and corrections from the audit trail, newest first', async () => {
     const manager = await loginAs(buildApp().app, 'manager');
     const employee = await prisma.employee.findUniqueOrThrow({ where: { employeeCode: 'EMP-B' } });
-    const created = await manager
-      .post(`/api/v1/employees/${employee.id}/compensations`)
-      .send({
-        amount: '130000',
-        currencyCode: 'USD',
-        effectiveFrom: '2026-04-01',
-        reason: 'PROMOTION',
-      });
+    const created = await manager.post(`/api/v1/employees/${employee.id}/compensations`).send({
+      amount: '130000',
+      currencyCode: 'USD',
+      effectiveFrom: '2026-04-01',
+      reason: 'PROMOTION',
+    });
     expect(created.status).toBe(201);
-    await manager
-      .patch(`/api/v1/employees/${employee.id}/compensations/${created.body.id}`)
-      .send({
-        version: created.body.version,
-        amount: '131000',
-        correctionReason: 'Approved figure',
-      });
+    await manager.patch(`/api/v1/employees/${employee.id}/compensations/${created.body.id}`).send({
+      version: created.body.version,
+      amount: '131000',
+      correctionReason: 'Approved figure',
+    });
 
     const { data } = await get('/recent-changes?limit=5');
     expect(data.map((d: { action: string }) => d.action)).toEqual([

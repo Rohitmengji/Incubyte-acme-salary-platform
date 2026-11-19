@@ -208,24 +208,20 @@ describe('CSV import commit', () => {
 
 describe('CSV export', () => {
   it('exports the filtered list with current salaries, safely for spreadsheets, and audits it', async () => {
-    await manager
-      .post('/api/v1/employees')
-      .send(
-        employeePayload({
-          employeeCode: 'EXP-1',
-          firstName: '=HYPERLINK("x")',
-          lastName: 'Sharma, Jr',
-        }),
-      );
-    await manager
-      .post('/api/v1/employees')
-      .send(
-        employeePayload({
-          employeeCode: 'EXP-2',
-          countryCode: 'US',
-          initialCompensation: { amount: '120000', currencyCode: 'USD' },
-        }),
-      );
+    await manager.post('/api/v1/employees').send(
+      employeePayload({
+        employeeCode: 'EXP-1',
+        firstName: '=HYPERLINK("x")',
+        lastName: 'Sharma, Jr',
+      }),
+    );
+    await manager.post('/api/v1/employees').send(
+      employeePayload({
+        employeeCode: 'EXP-2',
+        countryCode: 'US',
+        initialCompensation: { amount: '120000', currencyCode: 'USD' },
+      }),
+    );
 
     const res = await manager
       .get('/api/v1/exports/employees.csv?country=IN')
