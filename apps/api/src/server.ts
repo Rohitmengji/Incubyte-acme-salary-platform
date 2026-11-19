@@ -7,10 +7,11 @@ const logger = createLogger(config.logLevel);
 const prisma = createPrismaClient(config.databaseUrl);
 const app = createApp({ config, prisma, logger });
 
-const server = app.listen(config.port, () => {
+// Loopback by default: the web app's proxy is the only intended client (set HOST to expose it).
+const server = app.listen(config.port, config.host, () => {
   logger.info(
-    { port: config.port, env: config.env },
-    `API listening on http://localhost:${config.port}`,
+    { host: config.host, port: config.port, env: config.env },
+    `API listening on http://${config.host}:${config.port}`,
   );
 });
 

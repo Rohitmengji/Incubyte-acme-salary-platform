@@ -17,6 +17,30 @@ export function authRouter(auth: AuthService, config: AppConfig): Router {
     path: '/',
   };
 
+  const emailOf = (body: unknown) => {
+    const email = (body as { email?: unknown } | undefined)?.email;
+    return typeof email === 'string' ? email.trim().toLowerCase() : '';
+  };
+  const tooMany = new AppError(
+    429,
+    'rate-limited',
+    'Too many requests',
+    'Too many sign-in attempts. Please wait a few minutes and try again.',
+  );
+
+  // Per account, regardless of client IP: the client IP can be forged or rotated, so this is the
+  // control that actually bounds password guessing against one account. It is set higher than the
+  // per-IP limit to make deliberate lock-outs of a colleague harder (documented trade-off).
+  const accountLimiter = rateLimit({
+    windowMs: config.rateLimits.loginWindowMs,
+    limit: config.rateLimits.loginPerAccount,
+    skipSuccessfulRequests: true,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    keyGenerator: (req) => `account|${emailOf(req.body)}`,
+    handler: (_req, _res, next) => next(tooMany),
+  });
+
   // Counts failed attempts only, per client IP + email, so one attacker cannot lock out everyone.
   const loginLimiter = rateLimit({
     windowMs: config.rateLimits.loginWindowMs,
@@ -24,23 +48,11 @@ export function authRouter(auth: AuthService, config: AppConfig): Router {
     skipSuccessfulRequests: true,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    keyGenerator: (req) => {
-      const body = req.body as { email?: unknown } | undefined;
-      const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
-      return `${ipKeyGenerator(req.ip ?? 'unknown')}|${email}`;
-    },
-    handler: (_req, _res, next) =>
-      next(
-        new AppError(
-          429,
-          'rate-limited',
-          'Too many requests',
-          'Too many sign-in attempts. Please wait a few minutes and try again.',
-        ),
-      ),
+    keyGenerator: (req) => `${ipKeyGenerator(req.ip ?? 'unknown')}|${emailOf(req.body)}`,
+    handler: (_req, _res, next) => next(tooMany),
   });
 
-  router.post('/login', loginLimiter, async (req, res) => {
+  router.post('/login', accountLimiter, loginLimiter, async (req, res) => {
     const credentials = parseInput(loginRequestSchema, req.body);
     const { token, expiresAt, user } = await auth.login(credentials);
     res.cookie(config.cookie.name, token, { ...cookieOptions, expires: expiresAt });

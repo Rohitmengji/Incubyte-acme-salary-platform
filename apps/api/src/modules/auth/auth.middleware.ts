@@ -5,8 +5,21 @@ import { ForbiddenError, UnauthorizedError } from '../../http/errors.ts';
 import { readCookie } from '../../http/cookies.ts';
 
 /** Requires a valid session cookie; the API is the only trust boundary (ADR-0001). */
+/**
+ * Attaches the auth context when the request carries a valid session cookie, without rejecting
+ * anything (rate limiting needs to know who is signed in). `authenticate` then reuses the result.
+ */
+export function resolveSession(auth: AuthService, cookieName: string): RequestHandler {
+  return async (req, _res, next) => {
+    const token = readCookie(req, cookieName);
+    if (token) req.auth = (await auth.authenticate(token)) ?? undefined;
+    next();
+  };
+}
+
 export function authenticate(auth: AuthService, cookieName: string): RequestHandler {
   return async (req, _res, next) => {
+    if (req.auth) return next();
     const token = readCookie(req, cookieName);
     if (!token) return next(new UnauthorizedError());
     const context = await auth.authenticate(token);

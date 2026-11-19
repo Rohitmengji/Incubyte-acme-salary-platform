@@ -12,7 +12,7 @@ import { AppError } from './http/errors.ts';
 import { createErrorHandler, notFoundHandler } from './http/error-handler.ts';
 import { noStore, originCheck, requestId, requireJsonBody } from './http/middleware.ts';
 import { AuthService } from './modules/auth/auth.service.ts';
-import { authenticate, canRead } from './modules/auth/auth.middleware.ts';
+import { authenticate, canRead, resolveSession } from './modules/auth/auth.middleware.ts';
 import { authRouter } from './modules/auth/auth.routes.ts';
 import { referenceRouter } from './modules/reference/reference.routes.ts';
 import { EmployeeService } from './modules/employees/employee.service.ts';
@@ -86,12 +86,19 @@ export function createApp({
   const api = Router();
   api.use(
     noStore,
+    // Sessions are resolved before rate limiting so signed-in traffic is limited per session (below).
+    cookieParser(),
+    resolveSession(authService, config.cookie.name),
     rateLimit({
       windowMs: 60_000,
       limit: config.rateLimits.apiPerMinute,
       standardHeaders: 'draft-8',
       legacyHeaders: false,
-      keyGenerator: (req) => ipKeyGenerator(req.ip ?? 'unknown'),
+      // Per *valid* session when signed in: behind a proxy many colleagues share one IP, and a forged
+      // X-Forwarded-For must not grant a fresh budget. Anything else - including made-up cookie
+      // values, which would otherwise each get their own budget - is limited by IP.
+      keyGenerator: (req) =>
+        req.auth ? `session:${req.auth.sessionId}` : `ip:${ipKeyGenerator(req.ip ?? 'unknown')}`,
       handler: (_req, _res, next) =>
         next(
           new AppError(
@@ -105,11 +112,12 @@ export function createApp({
     originCheck(config.allowedOrigins),
     requireJsonBody,
     // CSV uploads (JSON envelope) get a larger limit; every other body is capped at 100 kB.
+    // Normalised like Express routing (case-insensitive, optional trailing slash), so '/imports/'
+    // reaches the same route with the same limit.
     (req, res, next) =>
-      req.method === 'POST' && req.path === '/imports'
+      req.method === 'POST' && req.path.toLowerCase().replace(/\/+$/, '') === '/imports'
         ? importBodyParser(req, res, next)
         : smallJsonBody(req, res, next),
-    cookieParser(),
   );
   api.get('/health', health);
   api.use('/auth', authRouter(authService, config));

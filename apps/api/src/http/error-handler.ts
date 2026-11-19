@@ -77,13 +77,24 @@ export const notFoundHandler: RequestHandler = (req, _res, next) => {
 };
 
 export function createErrorHandler(logger: Logger): ErrorRequestHandler {
-  return (error: unknown, req, res, _next) => {
+  return (error: unknown, req, res, next) => {
     const requestId = req.requestId;
+    if (res.headersSent) {
+      // Part of the response (e.g. a streamed CSV) is already out: a problem body cannot follow.
+      // Express's default handler aborts the connection so the client sees a failed download.
+      logger.error({ err: error, requestId }, 'Error after the response started');
+      return next(error);
+    }
     let appError: AppError | undefined =
       error instanceof AppError ? error : mapDatabaseError(error);
 
     if (!appError) {
-      const bodyError = error as { type?: string; status?: number };
+      const bodyError = error as {
+        type?: string;
+        status?: number;
+        expose?: boolean;
+        message?: string;
+      };
       if (bodyError.type === 'entity.parse.failed') {
         appError = new AppError(
           400,
@@ -97,6 +108,20 @@ export function createErrorHandler(logger: Logger): ErrorRequestHandler {
           'payload-too-large',
           'Payload too large',
           'The request body is too large.',
+        );
+      } else if (
+        typeof bodyError.status === 'number' &&
+        bodyError.status >= 400 &&
+        bodyError.status < 500
+      ) {
+        // Other client errors from body-parser/http-errors (unsupported charset or encoding,
+        // aborted request) or the router (an undecodable %-escape in the path) are the client's
+        // fault, not a 500. Only messages marked safe to expose are passed on.
+        appError = new AppError(
+          bodyError.status,
+          'bad-request',
+          'Bad request',
+          bodyError.expose === true ? bodyError.message : 'The request could not be understood.',
         );
       }
     }

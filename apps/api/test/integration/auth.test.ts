@@ -127,6 +127,58 @@ describe('authentication and sessions', () => {
   });
 });
 
+describe('brute-force protection when the client IP can be forged', () => {
+  beforeEach(resetDatabase);
+
+  it('limits failed guesses per account even when every attempt claims a different IP', async () => {
+    // Regression: X-Forwarded-For is client-controlled (Next.js forwards it as-is), so the per-IP
+    // limiter alone could be bypassed by rotating fake IPs.
+    const { app } = buildApp({
+      config: { LOGIN_RATE_LIMIT: '100', LOGIN_ACCOUNT_RATE_LIMIT: '3', TRUST_PROXY_HOPS: '1' },
+    });
+    const attempt = (ip: string, email: string, password: string) =>
+      request(app).post(LOGIN).set('X-Forwarded-For', ip).send({ email, password });
+
+    for (let i = 1; i <= 3; i++)
+      expect((await attempt(`10.0.0.${i}`, USERS.manager.email, 'wrong')).status).toBe(401);
+    expect((await attempt('10.0.0.99', USERS.manager.email, USERS.manager.password)).status).toBe(
+      429,
+    );
+    // Other accounts are unaffected.
+    expect((await attempt('10.0.0.100', USERS.viewer.email, USERS.viewer.password)).status).toBe(
+      200,
+    );
+  });
+});
+
+describe('general API rate limit', () => {
+  beforeEach(resetDatabase);
+
+  it('is per signed-in session: one user hitting it does not block colleagues behind the same IP', async () => {
+    const { app } = buildApp({ config: { API_RATE_LIMIT_PER_MINUTE: '5', TRUST_PROXY_HOPS: '1' } });
+    const manager = await loginAs(app, 'manager');
+    const viewer = await loginAs(app, 'viewer');
+    for (let i = 0; i < 5; i++) expect((await manager.get('/api/v1/auth/me')).status).toBe(200);
+    // A forged client IP does not buy a fresh budget for the same session.
+    expect((await manager.get('/api/v1/auth/me').set('X-Forwarded-For', '10.1.2.3')).status).toBe(
+      429,
+    );
+    expect((await viewer.get('/api/v1/auth/me')).status).toBe(200);
+  });
+
+  it('does not give made-up session cookies their own budget', async () => {
+    const { app } = buildApp({ config: { API_RATE_LIMIT_PER_MINUTE: '3' } });
+    const statuses = [];
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app)
+        .get('/api/v1/health')
+        .set('Cookie', `acme_session=forged-${i}`);
+      statuses.push(res.status);
+    }
+    expect(statuses).toEqual([200, 200, 200, 429, 429]);
+  });
+});
+
 describe('request security', () => {
   beforeEach(resetDatabase);
 
@@ -138,6 +190,24 @@ describe('request security', () => {
     const crossSite = await request(app).post(LOGIN).set('Sec-Fetch-Site', 'cross-site').send(body);
     expect(crossSite.status).toBe(403);
     expect((await request(app).post(LOGIN).set('Origin', WEB_ORIGIN).send(body)).status).toBe(200);
+  });
+
+  it('answers unsupported request encodings with a 4xx problem, not a 500', async () => {
+    const { app } = buildApp();
+    const res = await request(app)
+      .post(LOGIN)
+      .set('Content-Type', 'application/json; charset=latin1')
+      .send(JSON.stringify({ email: USERS.manager.email, password: 'x' }));
+    expect(res.status).toBe(415);
+    expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
+    expect(res.body).toMatchObject({ status: 415, title: 'Bad request' });
+  });
+
+  it('answers an undecodable path with 400, not a 500', async () => {
+    const manager = await loginAs(buildApp().app, 'manager');
+    const res = await manager.get('/api/v1/employees/%ZZ');
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ status: 400, detail: 'The request could not be understood.' });
   });
 
   it('only accepts JSON bodies on state-changing requests', async () => {
