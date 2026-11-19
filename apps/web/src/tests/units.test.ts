@@ -43,6 +43,12 @@ describe('safeNextPath', () => {
     ['https://evil.example', '/dashboard'],
     ['/\\evil.example', '/dashboard'],
     ['/login', '/dashboard'],
+    // Regression: the URL parser strips tab/CR/LF, turning these into "//evil.example".
+    ['/\t/evil.example', '/dashboard'],
+    ['/\n/evil.example', '/dashboard'],
+    ['/\r\\evil.example', '/dashboard'],
+    ['/login?next=/x', '/dashboard'],
+    ['/employees/%09x?a=1#top', '/employees/%09x?a=1#top'],
   ])('%s -> %s (no open redirects)', (input, expected) => {
     expect(safeNextPath(input)).toBe(expected);
   });
