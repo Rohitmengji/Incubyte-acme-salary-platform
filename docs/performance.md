@@ -91,7 +91,62 @@ The dashboard loads summary, distribution, histogram and recent changes in paral
 - **No layout jump while paging.** TanStack Query's `placeholderData` keeps the current page visible while the next one loads.
 - **Static by default.** The production build pre-renders every route except `/employees/[id]`. Data is fetched on the client through the same-origin `/api` path.
 
+## Production-readiness re-measurement
+
+Taken during the [production-readiness review](./production-readiness-review.md), after its fixes, on the same machine.
+
+**Setup:**
+
+- A freshly seeded `acme_review` database with exactly 10,000 employees and the same checksum as above.
+- **Production builds** of both apps: `node dist/server.js` with `NODE_ENV=production`, and `next build` then `next start`.
+- An authenticated HR manager session, 5 warm-up requests, then 50 sequential requests per scenario (10 for the export).
+- Every response was asserted to be `200`.
+- The API rate limit was raised for the benchmark process only, so the numbers can't be fast `429`s (see the mistake above).
+
+| Scenario (direct to the API)                           | p50           | p95           |
+| ------------------------------------------------------ | ------------- | ------------- |
+| Employee list, page 1                                  | 2.9 ms        | 4.4 ms        |
+| Employee list, last page                               | 9.8 ms        | 11.1 ms       |
+| Search `sha`, sorted by hire date                      | 2.9 ms        | 3.4 ms        |
+| Employee detail / salary history                       | 1.8 / 2.3 ms  | 2.6 / 2.9 ms  |
+| `GET /analytics/summary`                               | 21.7 ms       | 22.7 ms       |
+| `GET /analytics/distribution` (department, normalised) | 30.6 ms       | 31.5 ms       |
+| `GET /analytics/histogram` USD / JPY                   | 12.9 / 5.1 ms | 13.9 / 5.9 ms |
+| `GET /analytics/trends?months=24`                      | 244.4 ms      | 248.4 ms      |
+| `GET /analytics/recent-changes`                        | 1.3 ms        | 1.8 ms        |
+| `GET /exports/employees.csv` (10,000 rows)             | 192.2 ms      | 229.2 ms      |
+
+**The JPY histogram** now reads its range and counts in one `REPEATABLE READ` snapshot (review finding F3). That costs nothing measurable: 5.1 ms, against 4.8 ms before. **Trends** got faster on the production bundle (about 245 ms, against about 300 ms on the dev server).
+
+**Through the Next.js proxy** (`:3200` → `:4200`), the rewrite adds about 1–2 ms. List page 1 is p95 5.5 ms and the summary is p95 25.5 ms.
+
+**Concurrent load.** This is one client process firing requests in parallel, each waiting for its response before sending the next. It isn't a distributed load test.
+
+| Load                                             | Throughput | p50     | p95     | Max      |
+| ------------------------------------------------ | ---------- | ------- | ------- | -------- |
+| 10 clients × 40 list requests (mixed pages)      | 497 req/s  | 16.9 ms | 25.5 ms | 36.6 ms  |
+| 50 clients × 40 list requests                    | 881 req/s  | 54.5 ms | 65.0 ms | 84.7 ms  |
+| 50 clients × 40 list requests, through the proxy | 901 req/s  | 53.1 ms | 61.3 ms | 119.7 ms |
+| 10 clients × 10 dashboard summaries              | 142 req/s  | –       | 85.1 ms | –        |
+
+The single Node process and the default Prisma connection pool are the limit here, not the queries. Latency rises with queueing, but even 50 concurrent users stay well under the 200 ms target.
+
+**Frontend JavaScript** (production build, Chromium, cold cache per page):
+
+- "Initial" counts the JS requested before the `load` event, compressed as transferred.
+- "With prefetch" adds the chunks that Next.js `<Link>` prefetches for other routes once the page is idle.
+
+| Page         | Initial JS       | With prefetch    |
+| ------------ | ---------------- | ---------------- |
+| `/login`     | 15 files, 215 KB | 15 files, 215 KB |
+| `/dashboard` | 17 files, 377 KB | 20 files, 401 KB |
+| `/employees` | 17 files, 264 KB | 20 files, 401 KB |
+| `/analytics` | 17 files, 377 KB | 20 files, 401 KB |
+| `/imports`   | 16 files, 254 KB | 21 files, 409 KB |
+
+The roughly 115 KB difference between the chart pages and the others is the charting library (Recharts). Largest Contentful Paint on localhost was 20–200 ms, so it says little about real networks.
+
 ## Not measured yet
 
-- Frontend bundle size and Core Web Vitals. Next.js 16 no longer prints per-route sizes during `next build`, and no lab measurement (Lighthouse) has been taken yet.
-- Behaviour under concurrent load. All numbers above are sequential, from a single client.
+- Core Web Vitals on a real network or device, and a Lighthouse run.
+- A multi-process or distributed load test. The concurrency figures above come from one client process on the same machine.

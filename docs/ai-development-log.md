@@ -135,3 +135,34 @@ The dashboard, analytics and CSV screens had no backend endpoints yet. Since the
 - **In pay-currency mode, the analytics chart compares groups within one selected currency.** Cross-currency bars would mislead; the table still lists every group and currency.
 - **End-to-end tests run on their own `acme_e2e` database and ports** so they never change development data. This avoids repeating the earlier mistake where a smoke test polluted the dev database.
 - **Read-only users never see write actions.** The API enforces the role regardless, and the tests check both.
+
+## Production-readiness review (2026-11-19)
+
+### Prompt
+
+> "Act as an independent senior engineer conducting a production-readiness review. Inspect the entire application, identify functional bugs, security issues, incorrect financial calculations, authorization gaps, database query inefficiencies, accessibility problems and missing test coverage. Verify the application with 10,000 seeded employees. Run unit, integration and end-to-end tests. Fix confirmed issues, measure relevant performance, and update the documentation. Do not claim anything is fixed until verified."
+
+### How the work was done
+
+- Three separate AI reviewers (security, backend correctness, frontend and accessibility) read the code independently. **Their reports were treated as hypotheses.** Each claim was checked against the source, and where possible reproduced before anything changed. The results are in [production-readiness-review.md](./production-readiness-review.md).
+- The review ran against a freshly seeded 10,000-employee database and production builds. Every security fix was re-checked against those builds, not only in tests.
+- For each fix, the regression test was run against the old code as well (with `git stash`), to prove it fails there. A test that passes either way proves nothing.
+
+### Where checking the AI's output mattered
+
+| #   | What happened                                                                                                                                                        | How it was caught                                                           | Outcome                                                                                                               |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 1   | The first fix for IP spoofing keyed the general rate limit on "has a session cookie". That **introduced a new bypass**: any made-up cookie value got its own budget. | The second (backend) reviewer flagged it; reasoning it through confirmed it | The limiter now keys on a validated session, and a test sends a different fake cookie with each request               |
+| 2   | `HOST` was added to the config and the work summary said the API was bound to it, but `server.ts` never used it                                                      | A reviewer pointed it out, and `lsof` on the running server confirmed it    | Fixed. `lsof` now shows `127.0.0.1`, and the LAN address gets no connection                                           |
+| 3   | A reviewer claimed that editing an inactive employee drops their status because the select is disabled                                                               | Tests written to reproduce it passed on the unchanged code                  | **Rejected.** React Hook Form submits values from its state. The tests were kept as protection.                       |
+| 4   | New histogram tests failed for the wrong reason: the fixture used a country (`GB`) that doesn't exist in the test reference data                                     | Read the actual error before trusting the red test                          | Fixed the fixture, then confirmed the tests fail on the old code for the real reasons (count 0; HTTP 500)             |
+| 5   | The new open-redirect e2e test failed because its route filter (`/evil\.example/`) also matched the sign-in URL, whose query string contains that text               | The failure was `net::ERR_FAILED` on the app's own page                     | The filter now matches on the hostname. The scenario was also checked in a real browser against the production build. |
+| 6   | The first bundle measurement showed every signed-in page at the same 401 KB                                                                                          | Identical numbers across different pages looked wrong                       | That figure included `<Link>` prefetches of other routes. Initial and prefetched JS are now reported separately.      |
+| 7   | Counting findings for the plan, the first draft said "38". The review table has 32.                                                                                  | Counted the table rows                                                      | Corrected. The three fixes that have no automated test are labelled as such instead of being called verified.         |
+
+### Decisions
+
+- **A per-account login limit, despite its lockout trade-off.** Without it, anyone who can set a header gets unlimited guesses. The trade-off is documented in the README and the review report.
+- **Stripping forwarded headers in the web proxy** instead of trusting them. Trusting them can be switched on (`TRUST_FORWARDED_FOR=1`) when an edge proxy guarantees them.
+- **Exact decimal arithmetic for histogram bounds.** Salaries go up to 15 integer digits plus 4 decimals, which a double can't represent.
+- **Dialogs mount only while open**, rather than resetting form state by hand. This removes a whole class of stale-form bugs.

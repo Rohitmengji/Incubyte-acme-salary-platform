@@ -5,7 +5,7 @@ ACME's HR team keeps salaries for 10,000 employees across several countries in E
 > **Status:** the full stack is built and tested locally.
 >
 > - **Built:** a Next.js web app and an Express API, backed by PostgreSQL with exactly 10,000 synthetic employees.
-> - **Tests:** 197 automated unit, integration and component tests, plus 16 Playwright end-to-end tests with accessibility scans.
+> - **Tests:** 232 automated unit, integration and component tests, plus 19 Playwright end-to-end tests with accessibility scans.
 > - **Not done yet:** Docker files and the hosted deployment. See the [implementation plan](docs/implementation-plan.md).
 
 ## Reviewer quick start
@@ -99,14 +99,15 @@ docs/                requirements, architecture, ADRs, plan, performance, AI log
 
 ## Documentation
 
-| Document                                                   | Purpose                                             |
-| ---------------------------------------------------------- | --------------------------------------------------- |
-| [docs/requirements.md](docs/requirements.md)               | One-page requirements                               |
-| [docs/architecture.md](docs/architecture.md)               | System design, data model, flows, security, testing |
-| [docs/adr/](docs/adr/)                                     | Architecture decision records                       |
-| [docs/implementation-plan.md](docs/implementation-plan.md) | Phased plan and current status                      |
-| [docs/performance.md](docs/performance.md)                 | Measured seed time, API latency and query plans     |
-| [docs/ai-development-log.md](docs/ai-development-log.md)   | How AI assistance was used, checked and corrected   |
+| Document                                                                   | Purpose                                             |
+| -------------------------------------------------------------------------- | --------------------------------------------------- |
+| [docs/requirements.md](docs/requirements.md)                               | One-page requirements                               |
+| [docs/architecture.md](docs/architecture.md)                               | System design, data model, flows, security, testing |
+| [docs/adr/](docs/adr/)                                                     | Architecture decision records                       |
+| [docs/implementation-plan.md](docs/implementation-plan.md)                 | Phased plan and current status                      |
+| [docs/performance.md](docs/performance.md)                                 | Measured seed time, API latency and query plans     |
+| [docs/production-readiness-review.md](docs/production-readiness-review.md) | Review findings, fixes and how each was verified    |
+| [docs/ai-development-log.md](docs/ai-development-log.md)                   | How AI assistance was used, checked and corrected   |
 
 ## Security note
 
@@ -121,4 +122,15 @@ The app follows a reasonable security baseline for an assessment:
 - CSV exports protected against formula injection.
 - Synthetic data only.
 
-It is **not** certified as production-compliant. See [architecture §10](docs/architecture.md#10-security-model).
+It is **not** certified as production-compliant. See [architecture §10](docs/architecture.md#10-security-model) and the [production-readiness review](docs/production-readiness-review.md).
+
+Settings that matter when running it anywhere other than your laptop:
+
+| Setting                                          | App | Default                       | Meaning                                                                                                                                                         |
+| ------------------------------------------------ | --- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HOST`                                           | API | `127.0.0.1`                   | Interface the API listens on. Keep it on loopback unless something other than the web app's proxy must reach the API.                                           |
+| `LOGIN_RATE_LIMIT`                               | API | `10`                          | Failed sign-ins per IP and email per 15 minutes                                                                                                                 |
+| `LOGIN_ACCOUNT_RATE_LIMIT`                       | API | `30`                          | Failed sign-ins per account per 15 minutes, whatever the IP. Stops IP-spoofing guessers, at the cost of a 15-minute lockout someone could trigger deliberately. |
+| `API_RATE_LIMIT_PER_MINUTE`                      | API | `600`                         | Requests per minute per signed-in session (otherwise per IP)                                                                                                    |
+| `TRUST_FORWARDED_FOR`                            | Web | unset                         | Set to `1` only behind an edge proxy that overwrites `X-Forwarded-For` (such as Vercel). Otherwise the header is removed.                                       |
+| `SEED_MANAGER_PASSWORD` / `SEED_VIEWER_PASSWORD` | API | demo values in `.env.example` | Always required. With `NODE_ENV=production` the seed refuses the published demo passwords and anything shorter than 12 characters.                              |
