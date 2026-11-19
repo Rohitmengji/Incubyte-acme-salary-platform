@@ -1,5 +1,11 @@
 import type { Money } from './money.ts';
-import type { CompensationReason, EmployeeStatus, UserRole } from './enums.ts';
+import type {
+  AnalyticsDimension,
+  CompensationReason,
+  CurrencyMode,
+  EmployeeStatus,
+  UserRole,
+} from './enums.ts';
 
 export interface Paginated<T> {
   data: T[];
@@ -95,4 +101,125 @@ export interface AuditEvent {
   entityId: string;
   actor: { id: string; displayName: string } | null;
   changes: unknown;
+}
+
+// ---------- Analytics ----------
+
+/** Amounts are decimal strings rounded to the currency's minor units; `n` is the population size. */
+export interface PayStats {
+  currency: string;
+  n: number;
+  min: string;
+  max: string;
+  avg: string;
+  median: string;
+  p25: string;
+  p75: string;
+  total: string;
+  /** Fewer than 5 people: the median/average are not representative. */
+  smallSample: boolean;
+}
+
+export interface FxSnapshot {
+  asOfDate: string;
+  source: string;
+  reportingCurrency: string;
+}
+
+export interface AnalyticsSummary {
+  asOf: string;
+  records: { total: number; byStatus: Record<EmployeeStatus, number> };
+  /** People employed on `asOf` (hired on or before it and not yet terminated). */
+  employedHeadcount: number;
+  headcountByCountry: { code: string; name: string; count: number }[];
+  /** Salary statistics per pay currency - never summed across currencies. */
+  payByCurrency: PayStats[];
+  /** Company-wide statistics converted to the reporting currency, or null without an FX snapshot. */
+  normalized: PayStats | null;
+  fx: FxSnapshot | null;
+  /** People excluded from normalised figures because their currency has no rate in the snapshot. */
+  missingFxRates: number;
+}
+
+export interface DistributionRow extends PayStats {
+  key: string;
+  label: string;
+}
+
+export interface DistributionResponse {
+  asOf: string;
+  dimension: AnalyticsDimension;
+  currencyMode: CurrencyMode;
+  fx: FxSnapshot | null;
+  rows: DistributionRow[];
+}
+
+export interface HistogramResponse {
+  asOf: string;
+  currency: string;
+  normalized: boolean;
+  fx: FxSnapshot | null;
+  buckets: { from: string; to: string | null; count: number }[];
+}
+
+export interface TrendsResponse {
+  asOf: string;
+  currency: string;
+  fx: FxSnapshot | null;
+  /** One point per month end (the current month uses `asOf`); population = employed on that date. */
+  points: { date: string; n: number; median: string; avg: string }[];
+}
+
+export interface RecentSalaryChange {
+  id: string;
+  occurredAt: string;
+  action: 'COMPENSATION_CREATED' | 'COMPENSATION_CORRECTED';
+  employee: { id: string; employeeCode: string; firstName: string; lastName: string };
+  actor: { id: string; displayName: string } | null;
+  before: Record<string, string | null> | null;
+  after: Record<string, string | null>;
+  correctionReason: string | null;
+}
+
+// ---------- CSV import ----------
+
+export interface ImportRowIssue {
+  /** Spreadsheet row number (the header is row 1). */
+  row: number;
+  column: string | null;
+  message: string;
+  kind: 'invalid' | 'duplicate';
+}
+
+export interface ImportSampleRow {
+  row: number;
+  employeeCode: string;
+  name: string;
+  email: string;
+  country: string;
+  department: string;
+  jobTitle: string;
+  hireDate: string;
+  salary: string;
+  currency: string;
+}
+
+export interface ImportPreview {
+  id: string;
+  fileName: string;
+  status: 'PREVIEWED' | 'COMMITTED';
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  duplicateRows: number;
+  /** Row-level problems (capped; see issuesTruncated). */
+  issues: ImportRowIssue[];
+  issuesTruncated: number;
+  /** First valid rows, so the user can check the mapping before committing. */
+  sample: ImportSampleRow[];
+  createdAt: string;
+  expiresAt: string;
+  committedAt: string | null;
+  /** Set when an identical file was already imported. */
+  previouslyImportedAt: string | null;
 }

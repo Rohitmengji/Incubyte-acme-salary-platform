@@ -32,3 +32,12 @@ export type EmployeeSortField = (typeof EMPLOYEE_SORT_FIELDS)[number];
 
 export const PAGE_SIZES = [10, 25, 50, 100] as const;
 export const MAX_PAGE_SIZE = 100;
+
+export const ANALYTICS_DIMENSIONS = ['country', 'department', 'jobTitle'] as const;
+export type AnalyticsDimension = (typeof ANALYTICS_DIMENSIONS)[number];
+
+/** local = grouped per pay currency (default); normalized = converted to USD at a dated FX snapshot. */
+export const CURRENCY_MODES = ['local', 'normalized'] as const;
+export type CurrencyMode = (typeof CURRENCY_MODES)[number];
+
+export const REPORTING_CURRENCY = 'USD';

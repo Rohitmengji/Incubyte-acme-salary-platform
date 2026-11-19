@@ -19,6 +19,8 @@ import { EmployeeService } from './modules/employees/employee.service.ts';
 import { employeesRouter } from './modules/employees/employee.routes.ts';
 import { CompensationService } from './modules/compensation/compensation.service.ts';
 import { compensationRouter } from './modules/compensation/compensation.routes.ts';
+import { AnalyticsService } from './modules/analytics/analytics.service.ts';
+import { analyticsRouter } from './modules/analytics/analytics.routes.ts';
 
 export interface AppDependencies {
   config: AppConfig;
@@ -48,6 +50,7 @@ export function createApp({
   const authService = new AuthService(prisma, clock, config.sessionTtlMs);
   const employeeService = new EmployeeService(prisma, clock);
   const compensationService = new CompensationService(prisma, clock);
+  const analyticsService = new AnalyticsService(prisma, clock);
 
   const app = express();
   app.set('trust proxy', config.trustProxyHops);
@@ -72,6 +75,7 @@ export function createApp({
   };
   app.get('/health', health);
 
+  const smallJsonBody = express.json({ limit: '100kb' });
   const api = Router();
   api.use(
     noStore,
@@ -93,7 +97,7 @@ export function createApp({
     }),
     originCheck(config.allowedOrigins),
     requireJsonBody,
-    express.json({ limit: '100kb' }),
+    smallJsonBody,
     cookieParser(),
   );
   api.get('/health', health);
@@ -103,6 +107,7 @@ export function createApp({
   api.use('/reference-data', requireSession, canRead, referenceRouter(prisma));
   api.use('/employees/:id/compensations', requireSession, compensationRouter(compensationService));
   api.use('/employees', requireSession, employeesRouter(employeeService));
+  api.use('/analytics', requireSession, analyticsRouter(analyticsService));
 
   app.use('/api/v1', api);
   app.use(notFoundHandler);

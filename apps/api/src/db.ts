@@ -1,8 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from './generated/prisma/client.ts';
+import { Prisma, PrismaClient } from './generated/prisma/client.ts';
 
-export type { Prisma } from './generated/prisma/client.ts';
-export { PrismaClient };
+export { Prisma, PrismaClient };
 
 /** A Prisma client or an interactive-transaction client. */
 export type Db = Omit<

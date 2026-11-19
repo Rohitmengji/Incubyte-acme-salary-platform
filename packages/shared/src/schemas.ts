@@ -7,6 +7,8 @@ import {
   EMPLOYEE_SORT_FIELDS,
   EMPLOYEE_STATUSES,
   MAX_PAGE_SIZE,
+  ANALYTICS_DIMENSIONS,
+  CURRENCY_MODES,
 } from './enums.ts';
 
 const name = z.string().trim().min(1, 'Required').max(100, 'Must be at most 100 characters');
@@ -167,3 +169,71 @@ export const auditEventsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(25),
 });
+
+// ---------- Analytics ----------
+
+export const distributionQuerySchema = z.object({
+  dimension: z.enum(ANALYTICS_DIMENSIONS).default('department'),
+  currencyMode: z.enum(CURRENCY_MODES).default('local'),
+});
+
+export const histogramQuerySchema = z.object({
+  /** Omit for the USD-normalised histogram; pass a currency for a local-currency histogram. */
+  currency: currencyCodeSchema.optional(),
+});
+
+export const trendsQuerySchema = z.object({
+  months: z.coerce.number().int().min(3).max(60).default(24),
+});
+
+export const recentChangesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+
+// ---------- CSV import / export ----------
+
+/** Column order for exports; imports accept the same names (case and spacing are ignored). */
+export const CSV_COLUMNS = [
+  'employee_id',
+  'first_name',
+  'last_name',
+  'email',
+  'country',
+  'department',
+  'job_title',
+  'status',
+  'hire_date',
+  'termination_date',
+  'salary',
+  'currency',
+  'salary_effective_from',
+] as const;
+
+export const CSV_REQUIRED_IMPORT_COLUMNS = [
+  'employee_id',
+  'first_name',
+  'last_name',
+  'email',
+  'country',
+  'department',
+  'job_title',
+  'hire_date',
+  'salary',
+  'currency',
+] as const;
+
+export const CSV_MAX_ROWS = 10_000;
+/** Keeps the JSON request under the 4.5 MB body cap of serverless hosts (architecture §6). */
+export const CSV_MAX_CHARS = 4_000_000;
+
+/** The browser reads the file as text and sends it in a JSON envelope (JSON-only API, ADR-0001). */
+export const importUploadSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  content: z
+    .string()
+    .min(1, 'The file is empty')
+    .max(CSV_MAX_CHARS, 'The file is larger than 4 MB. Split it into smaller files.'),
+});
+export type ImportUpload = z.infer<typeof importUploadSchema>;
+
+export const exportQuerySchema = employeeListQuerySchema.omit({ page: true, pageSize: true });
