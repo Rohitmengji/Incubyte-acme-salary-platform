@@ -3,6 +3,8 @@ import Papa from 'papaparse';
 export interface ParsedCsv {
   headers: string[];
   rows: Record<string, string>[];
+  /** Structural problems that make the file ambiguous (duplicate columns, broken quoting, ragged rows). */
+  problems: string[];
 }
 
 /** "Employee ID", " employee-id " and "EMPLOYEE_ID" all become "employee_id". */
@@ -25,7 +27,26 @@ export function parseCsv(content: string): ParsedCsv {
     transformHeader: normaliseHeader,
     transform: (value) => value.trim(),
   });
-  return { headers: result.meta.fields ?? [], rows: result.data };
+  const problems: string[] = [];
+  // PapaParse silently renames a repeated column ("salary" -> "salary_1"); importing either copy
+  // would be a guess, so the file is rejected instead.
+  const renamed = (result.meta as { renamedHeaders?: Record<string, string> | null })
+    .renamedHeaders;
+  for (const original of new Set(Object.values(renamed ?? {}))) {
+    if (original) problems.push(`The column "${original}" appears more than once.`);
+  }
+  for (const error of result.errors) {
+    if (error.type === 'Delimiter') continue; // a one-column file has no delimiter to detect
+    if (error.type === 'Quotes') {
+      // PapaParse's row number for quoting errors is not reliable, so none is given.
+      problems.push('A quoted value is never closed. Check the file for a stray " character.');
+    } else {
+      // `row` is the 0-based data row; the header is spreadsheet row 1.
+      const where = error.row === undefined ? '' : `Row ${error.row + 2}: `;
+      problems.push(`${where}${error.message}.`);
+    }
+  }
+  return { headers: result.meta.fields ?? [], rows: result.data, problems };
 }
 
 const FORMULA_PREFIX = /^[=+\-@\t\r]/;
@@ -38,7 +59,9 @@ export function escapeCsvCell(value: string | number | null | undefined): string
   if (value === null || value === undefined) return '';
   let text = String(value);
   if (FORMULA_PREFIX.test(text)) text = `'${text}`;
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  // ';' is quoted too: Excel in locales whose list separator is ';' would otherwise split the cell
+  // and could start a new cell with a formula.
+  return /[",;\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 export function toCsvLine(values: (string | number | null | undefined)[]): string {

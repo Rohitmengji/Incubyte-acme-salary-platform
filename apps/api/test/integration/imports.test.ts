@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type TestAgent from 'supertest/lib/agent.js';
 import { FixedClock } from '../../src/lib/clock.ts';
 import { buildApp, employeePayload, loginAs, prisma, resetDatabase, TEST_NOW } from './helpers.ts';
@@ -124,11 +124,28 @@ describe('CSV import preview', () => {
     ).toBe(422);
   });
 
+  it('rejects an ambiguous file with a repeated salary column instead of guessing', async () => {
+    const res = await manager.post('/api/v1/imports').send({
+      fileName: 'x.csv',
+      content: [`${HEADER},Salary`, `${row('DUP-1', 'dup1@acme.example')},9999999`].join('\r\n'),
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.errors).toEqual([
+      { path: 'content', message: 'The column "salary" appears more than once.' },
+    ]);
+    expect(await prisma.importBatch.count()).toBe(0);
+  });
+
   it('accepts a body larger than the default 100 kB JSON limit', async () => {
     const lines = Array.from({ length: 1500 }, (_, i) => row(`BULK-${i}`, `bulk${i}@acme.example`));
     const res = await upload(lines);
     expect(res.status).toBe(201);
     expect(res.body.validRows).toBe(1500);
+    // The same route with a trailing slash gets the same limit.
+    const slash = await manager
+      .post('/api/v1/imports/')
+      .send({ fileName: 'people.csv', content: [HEADER, ...lines].join('\r\n') });
+    expect(slash.status).toBe(201);
   });
 
   it('is limited to HR managers', async () => {
@@ -196,6 +213,14 @@ describe('CSV import commit', () => {
     expect(res.body.type).toMatch(/import-expired$/);
   });
 
+  it('deletes expired previews when a new file is uploaded', async () => {
+    await upload([row('OLD-1', 'old1@acme.example')]);
+    clock.advanceBy(31 * 60 * 1000);
+    const fresh = await upload([row('NEW-1', 'new1@acme.example')]);
+    const batches = await prisma.importBatch.findMany({ select: { id: true } });
+    expect(batches.map((b) => b.id)).toEqual([fresh.body.id]);
+  });
+
   it('warns when the identical file was already imported', async () => {
     const lines = [row('NEW-1', 'new1@acme.example')];
     const first = await upload(lines);
@@ -255,6 +280,39 @@ describe('CSV export', () => {
       where: { action: 'EMPLOYEES_EXPORTED' },
     });
     expect(audit.changes).toMatchObject({ rowCount: 1, filters: { country: ['IN'] } });
+  });
+
+  it('keeps the audit record and aborts the download when the export fails part-way', async () => {
+    await manager.post('/api/v1/employees').send(employeePayload({ employeeCode: 'FAIL-1' }));
+    // Fail the first page read, which happens after the CSV header has been sent.
+    const original = prisma.$transaction.bind(prisma);
+    const spy = vi.spyOn(prisma, '$transaction').mockImplementationOnce(((
+      fn: (tx: unknown) => Promise<unknown>,
+      options: unknown,
+    ) =>
+      original(
+        (tx) =>
+          fn(
+            new Proxy(tx, {
+              get: (target, key) =>
+                key === 'employee'
+                  ? {
+                      ...target.employee,
+                      findMany: () => Promise.reject(new Error('simulated database failure')),
+                    }
+                  : Reflect.get(target, key),
+            }),
+          ),
+        options as never,
+      )) as never);
+    try {
+      await expect(manager.get('/api/v1/exports/employees.csv')).rejects.toThrow();
+    } finally {
+      spy.mockRestore();
+    }
+    const audits = await prisma.auditLog.findMany({ where: { action: 'EMPLOYEES_EXPORTED' } });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]!.changes).toMatchObject({ rowCount: 1 });
   });
 
   it('produces a file that the importer accepts (round trip)', async () => {

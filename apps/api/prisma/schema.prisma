@@ -233,5 +233,9 @@ model ImportBatch {
   uploadedBy AppUser @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
 
   @@index([uploadedById, createdAt(sort: Desc)])
+  /// Expired-preview cleanup on every upload.
+  @@index([status, expiresAt])
+  /// "This exact file was already imported" check on every upload.
+  @@index([fileSha256, status])
   @@map("import_batch")
 }

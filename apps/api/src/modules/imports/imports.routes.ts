@@ -62,7 +62,9 @@ export function exportsRouter(prisma: PrismaClient, clock: Clock): Router {
     await prisma.$transaction(
       async (tx) => {
         const total = await tx.employee.count({ where });
-        await writeAudit(tx, actor(req), {
+        // Audited outside the read snapshot and before the first byte is sent, so the record is
+        // committed even if the stream later fails part-way through the file.
+        await writeAudit(prisma, actor(req), {
           action: 'EMPLOYEES_EXPORTED',
           entityType: 'EXPORT',
           entityId: randomUUID(),

@@ -120,7 +120,13 @@ export class ImportService {
   ) {}
 
   async preview(actor: Actor, upload: ImportUpload): Promise<ImportPreview> {
-    const { headers, rows } = parseCsv(upload.content);
+    const { headers, rows, problems } = parseCsv(upload.content);
+    if (problems.length) {
+      throw new BusinessRuleError(
+        'The file is not a well-formed CSV table, so it cannot be imported safely. Fix it and upload it again.',
+        problems.slice(0, 10).map((message) => ({ path: 'content', message })),
+      );
+    }
     const missing = CSV_REQUIRED_IMPORT_COLUMNS.filter((column) => !headers.includes(column));
     if (missing.length) {
       throw new BusinessRuleError(`The file is missing required columns: ${missing.join(', ')}.`, [
@@ -257,6 +263,11 @@ export class ImportService {
 
     const hash = sha256(upload.content);
     const now = this.clock.now();
+    // Housekeeping: expired previews can never be committed but each holds up to ~4 MB of rows.
+    // Committed batches are kept as the record of what was imported.
+    await this.prisma.importBatch.deleteMany({
+      where: { status: 'PREVIEWED', expiresAt: { lt: now } },
+    });
     const [batch, previous] = await Promise.all([
       this.prisma.importBatch.create({
         data: {

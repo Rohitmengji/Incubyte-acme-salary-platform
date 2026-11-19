@@ -7,6 +7,21 @@ import {
 } from '../../src/modules/imports/csv.ts';
 
 describe('parseCsv', () => {
+  it('reports repeated columns instead of silently using one of them', () => {
+    const { problems } = parseCsv('Employee ID,Salary,salary\nEMP-1,100000,200000\n');
+    expect(problems).toEqual(['The column "salary" appears more than once.']);
+  });
+
+  it('reports ragged rows with their spreadsheet row number, and unterminated quotes', () => {
+    expect(parseCsv('a,b\n1,2,3\n4,5\n').problems).toEqual([
+      'Row 2: Too many fields: expected 2 fields but parsed 3.',
+    ]);
+    expect(parseCsv('a,b\n1,"x\n2,3\n').problems).toEqual([
+      'A quoted value is never closed. Check the file for a stray " character.',
+    ]);
+    expect(parseCsv('a\n1\n2\n').problems).toEqual([]);
+  });
+
   it('normalises headers and trims cells', () => {
     const { headers, rows } = parseCsv('Employee ID, First Name ,EMAIL\n EMP-1 , Asha ,a@x.io\n');
     expect(headers).toEqual(['employee_id', 'first_name', 'email']);
@@ -40,6 +55,8 @@ describe('escapeCsvCell', () => {
     expect(escapeCsvCell('Sharma, Priya')).toBe('"Sharma, Priya"');
     expect(escapeCsvCell('say "hi"')).toBe('"say ""hi"""');
     expect(escapeCsvCell("O'Brien")).toBe("O'Brien");
+    // Regression: unquoted ';' let Excel (';' list separator) split "x;=1+1" into a formula cell.
+    expect(escapeCsvCell('x;=1+1')).toBe('"x;=1+1"');
     expect(escapeCsvCell(null)).toBe('');
   });
 
