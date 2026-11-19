@@ -2,12 +2,14 @@
 
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
 /**
- * Accessible modal dialog (Radix): focus is trapped and restored, Escape closes, the title and
- * description are announced, and background content is inert.
+ * Accessible modal dialog (Radix): focus is trapped, Escape closes, the title and description are
+ * announced, and background content is inert. These dialogs are opened programmatically (no Radix
+ * Trigger), so Radix would return focus to nothing on close; we remember the element that had focus
+ * when the dialog opened and return focus to it (or to <main> if it has gone).
  */
 export function Dialog({
   open,
@@ -24,6 +26,7 @@ export function Dialog({
   children: ReactNode;
   className?: string;
 }) {
+  const opener = useRef<HTMLElement | null>(null);
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -34,6 +37,18 @@ export function Dialog({
             className,
           )}
           {...(description ? {} : { 'aria-describedby': undefined })}
+          onOpenAutoFocus={() => {
+            // Fires before focus moves into the dialog, so this is still the opener.
+            opener.current =
+              document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            const target = opener.current?.isConnected
+              ? opener.current
+              : document.getElementById('main');
+            target?.focus();
+          }}
         >
           <div className="mb-4 pr-8">
             <DialogPrimitive.Title className="text-lg font-semibold text-slate-900">

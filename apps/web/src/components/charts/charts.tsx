@@ -18,6 +18,7 @@ import { Table, Td, Th } from '@/components/ui/table';
 import { Badge } from '@/components/ui/card';
 import {
   formatCompactNumber,
+  formatPlainNumber,
   formatCount,
   formatMoney,
   formatMoneyCompact,
@@ -249,7 +250,18 @@ export function HistogramChart({
     b.to
       ? `${formatCompactNumber(b.from)}–${formatCompactNumber(b.to)}`
       : `${formatCompactNumber(b.from)}+`;
-  const points = data.buckets.map((b) => ({ label: label(b), count: b.count }));
+  // Compact labels ("80K") suit the axis but can hide the real bound (e.g. 1,250 shows as "1.3K"), so
+  // the tooltip and data table spell out the exact half-open band.
+  const exact = (b: HistogramResponse['buckets'][number]) =>
+    b.to
+      ? `${formatPlainNumber(b.from)} to under ${formatPlainNumber(b.to)}`
+      : `${formatPlainNumber(b.from)} or more`;
+  const points = data.buckets.map((b) => ({
+    key: b.from,
+    label: label(b),
+    exact: exact(b),
+    count: b.count,
+  }));
   const peak = [...points].sort((a, b) => b.count - a.count)[0];
   return (
     <ChartCard
@@ -272,7 +284,7 @@ export function HistogramChart({
               content={({ active, payload }) => (
                 <ChartTooltip
                   active={active}
-                  label={(payload?.[0]?.payload as { label?: string } | undefined)?.label}
+                  label={(payload?.[0]?.payload as { exact?: string } | undefined)?.exact}
                   rows={[{ name: 'People', value: formatCount(Number(payload?.[0]?.value ?? 0)) }]}
                 />
               )}
@@ -299,8 +311,8 @@ export function HistogramChart({
           </thead>
           <tbody>
             {points.map((p) => (
-              <tr key={p.label}>
-                <Td>{p.label}</Td>
+              <tr key={p.key}>
+                <Td>{p.exact}</Td>
                 <Td className="tabular text-right">{formatCount(p.count)}</Td>
               </tr>
             ))}

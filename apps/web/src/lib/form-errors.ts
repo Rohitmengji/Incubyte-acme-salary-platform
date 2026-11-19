@@ -14,7 +14,8 @@ export function applyServerErrors<T extends FieldValues>(
   let matched = false;
   for (const { path, message } of error.problem.errors ?? []) {
     if (fields.includes(path)) {
-      setError(path as Path<T>, { type: 'server', message });
+      // Focus the first rejected field so screen readers announce it with its error message.
+      setError(path as Path<T>, { type: 'server', message }, { shouldFocus: !matched });
       matched = true;
     }
   }

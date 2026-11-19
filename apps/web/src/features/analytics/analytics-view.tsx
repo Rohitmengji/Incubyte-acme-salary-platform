@@ -65,6 +65,11 @@ export function AnalyticsView() {
   const reference = useReferenceData();
 
   const rows = useMemo(() => distribution.data?.rows ?? [], [distribution.data]);
+  // While a new grouping loads, the previous result stays on screen; label it by what it actually
+  // contains (from the response), not by the newly selected controls.
+  const shownMode = distribution.data?.currencyMode ?? mode;
+  const shownDimension = distribution.data?.dimension ?? dimension;
+  const updating = distribution.isPlaceholderData;
   // In pay-currency mode a chart can only compare groups paid in the same currency.
   const currencies = useMemo(() => {
     const totals = new Map<string, number>();
@@ -72,13 +77,13 @@ export function AnalyticsView() {
     return [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
   }, [rows]);
   const selectedCurrency =
-    mode === 'normalized'
+    shownMode === 'normalized'
       ? 'USD'
       : chartCurrency && currencies.includes(chartCurrency)
         ? chartCurrency
         : (currencies[0] ?? 'USD');
   const chartRows = rows.filter((r) => r.currency === selectedCurrency);
-  const dimensionLabel = DIMENSIONS.find((d) => d.value === dimension)!.label.toLowerCase();
+  const dimensionLabel = DIMENSIONS.find((d) => d.value === shownDimension)!.label.toLowerCase();
 
   return (
     <>
@@ -103,7 +108,7 @@ export function AnalyticsView() {
           <span className="text-sm font-medium text-slate-700">Show amounts in</span>
           <Segmented label="Show amounts in" value={mode} onChange={setMode} options={MODES} />
         </div>
-        {mode === 'normalized' && distribution.data?.fx ? (
+        {shownMode === 'normalized' && distribution.data?.fx ? (
           <p className="text-xs text-slate-600">
             Converted at the {formatDate(distribution.data.fx.asOfDate)} snapshot.{' '}
             {distribution.data.fx.source}.
@@ -113,64 +118,69 @@ export function AnalyticsView() {
 
       <div className="grid gap-6">
         {distribution.data ? (
-          rows.length === 0 ? (
-            <Card>
-              <EmptyState
-                title="No salary data"
-                description="There is nobody with a current salary to analyse yet."
-              />
-            </Card>
-          ) : (
-            <>
-              <MedianRangeChart
-                title={`Median salary by ${dimensionLabel}`}
-                description={
-                  mode === 'normalized'
-                    ? 'Median with the middle 50% (marker). All pay converted to USD.'
-                    : `Groups paid in ${selectedCurrency}. Choose another currency to compare its groups.`
-                }
-                rows={chartRows}
-                currency={selectedCurrency}
-                actions={
-                  mode === 'local' ? (
-                    <div className="flex items-center gap-2">
-                      <label htmlFor="chart-currency" className="text-sm text-slate-700">
-                        Currency
-                      </label>
-                      <Select
-                        id="chart-currency"
-                        value={selectedCurrency}
-                        onChange={(e) => setChartCurrency(e.target.value)}
-                        className="h-8 w-28"
-                      >
-                        {currencies.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  ) : null
-                }
-              />
+          <div
+            className={updating ? 'grid gap-6 opacity-60 transition-opacity' : 'grid gap-6'}
+            aria-busy={updating}
+          >
+            {rows.length === 0 ? (
               <Card>
-                <CardHeader>
-                  <div>
-                    <CardTitle>Statistics by {dimensionLabel}</CardTitle>
-                    <CardDescription>
-                      {mode === 'normalized'
-                        ? 'All amounts in USD at the snapshot rate.'
-                        : 'One row per group and pay currency, so amounts are never mixed across currencies.'}{' '}
-                      Groups with fewer than 5 people are marked as a small sample.
-                    </CardDescription>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <DistributionTable rows={rows} showCurrency={mode === 'local'} />
-                </CardContent>
+                <EmptyState
+                  title="No salary data"
+                  description="There is nobody with a current salary to analyse yet."
+                />
               </Card>
-            </>
-          )
+            ) : (
+              <>
+                <MedianRangeChart
+                  title={`Median salary by ${dimensionLabel}`}
+                  description={
+                    shownMode === 'normalized'
+                      ? 'Median with the middle 50% (marker). All pay converted to USD.'
+                      : `Groups paid in ${selectedCurrency}. Choose another currency to compare its groups.`
+                  }
+                  rows={chartRows}
+                  currency={selectedCurrency}
+                  actions={
+                    shownMode === 'local' ? (
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="chart-currency" className="text-sm text-slate-700">
+                          Currency
+                        </label>
+                        <Select
+                          id="chart-currency"
+                          value={selectedCurrency}
+                          onChange={(e) => setChartCurrency(e.target.value)}
+                          className="h-8 w-28"
+                        >
+                          {currencies.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    ) : null
+                  }
+                />
+                <Card>
+                  <CardHeader>
+                    <div>
+                      <CardTitle>Statistics by {dimensionLabel}</CardTitle>
+                      <CardDescription>
+                        {shownMode === 'normalized'
+                          ? 'All amounts in USD at the snapshot rate.'
+                          : 'One row per group and pay currency, so amounts are never mixed across currencies.'}{' '}
+                        Groups with fewer than 5 people are marked as a small sample.
+                      </CardDescription>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <DistributionTable rows={rows} showCurrency={shownMode === 'local'} />
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
         ) : (
           <SectionFallback query={distribution} label="Loading distribution" />
         )}

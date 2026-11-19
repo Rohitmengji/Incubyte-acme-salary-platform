@@ -49,6 +49,13 @@ export function formatCompactNumber(value: string | number): string {
   return compactNumber.format(value as `${number}`);
 }
 
+const plainNumber = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
+
+/** Exact grouping of a decimal string (Intl formats numeric strings without going through a double). */
+export function formatPlainNumber(value: string): string {
+  return plainNumber.format(value as `${number}`);
+}
+
 const integer = new Intl.NumberFormat('en-US');
 
 export function formatCount(value: number): string {

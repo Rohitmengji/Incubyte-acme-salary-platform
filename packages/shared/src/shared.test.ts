@@ -100,3 +100,14 @@ describe('updateEmployeeRequestSchema', () => {
     );
   });
 });
+
+describe('reference pickers', () => {
+  it('asks for a choice when a department or job title select is left on its placeholder', () => {
+    const result = updateEmployeeRequestSchema.safeParse({ version: 1, departmentId: '' });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]).toMatchObject({
+      path: ['departmentId'],
+      message: 'Please choose an option',
+    });
+  });
+});

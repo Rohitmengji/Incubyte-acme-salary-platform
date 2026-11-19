@@ -107,6 +107,38 @@ describe('ImportWorkflow', () => {
     await waitFor(() => expect(screen.getByLabelText('CSV file')).toBeInTheDocument());
   });
 
+  it('cannot be cancelled or reset while the import is being committed', async () => {
+    let finish: (value: { body: unknown }) => void = () => {};
+    mockApi({
+      'POST /imports': { status: 201, body: preview },
+      'POST /imports/batch-1/commit': () => new Promise((resolve) => (finish = resolve)),
+    });
+    renderWithProviders(<ImportWorkflow />);
+    await uploadFile();
+    await userEvent.click(await screen.findByRole('button', { name: 'Import 2 employees' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Import now' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    expect(dialog).toBeInTheDocument();
+    finish({ body: { ...preview, status: 'COMMITTED', importedRows: 2 } });
+    expect(await screen.findByRole('status')).toHaveTextContent('Imported 2 employees');
+  });
+
+  it('lists each structural problem the server found in the file', async () => {
+    mockApi({
+      'POST /imports': problem(422, 'The file is not a well-formed CSV table.', {
+        errors: [{ path: 'content', message: 'The column "salary" appears more than once.' }],
+      }),
+    });
+    renderWithProviders(<ImportWorkflow />);
+    await uploadFile();
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The column "salary" appears more than once.',
+    );
+  });
+
   it('reports file-level problems from the server (missing columns)', async () => {
     mockApi({ 'POST /imports': problem(422, 'The file is missing required columns: email.') });
     renderWithProviders(<ImportWorkflow />);

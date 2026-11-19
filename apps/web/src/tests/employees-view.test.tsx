@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { EmployeeSummary, Paginated, ReferenceData } from '@acme/shared';
 import { EmployeesView } from '@/features/employees/employees-view';
-import { currentUrl, setUrl } from './navigation-mock';
+import { currentUrl, router, setUrl } from './navigation-mock';
 import { mockApi, problem, renderWithProviders, VIEWER } from './utils';
 
 const reference: ReferenceData = {
@@ -81,6 +81,41 @@ describe('EmployeesView', () => {
     expect(searches.map((c) => c.url.searchParams.get('search'))).toEqual([null, 'EMP-000007']);
   });
 
+  it('adds a history entry for filter changes but not for each typed search', async () => {
+    mockApi({
+      'GET /employees': { body: page([employee(1)]) },
+      'GET /reference-data': { body: reference },
+    });
+    setUrl('/employees');
+    renderWithProviders(<EmployeesView />);
+    await screen.findByText('Priya Sharma1');
+    await userEvent.selectOptions(screen.getByLabelText('Countries'), 'JP');
+    await waitFor(() =>
+      expect(router.push).toHaveBeenCalledWith('/employees?country=JP', expect.anything()),
+    );
+    await userEvent.type(screen.getByLabelText('Search by name or employee ID'), 'asha');
+    await waitFor(() => expect(currentUrl().searchParams.get('search')).toBe('asha'));
+    expect(router.replace).toHaveBeenCalledTimes(1);
+    expect(router.replace.mock.calls[0]![0]).toMatch(/search=asha/);
+    expect(router.push).toHaveBeenCalledTimes(1);
+  });
+
+  it('"Clear filters" also cancels a search that was typed but not yet sent', async () => {
+    mockApi({
+      'GET /employees': { body: page([employee(1)]) },
+      'GET /reference-data': { body: reference },
+    });
+    setUrl('/employees?country=JP');
+    renderWithProviders(<EmployeesView />);
+    await screen.findByText('Priya Sharma1');
+    await userEvent.type(screen.getByLabelText('Search by name or employee ID'), 'asha');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+    // Wait past the 300 ms debounce: the cleared search must not come back.
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(currentUrl().search).toBe('');
+    expect(screen.getByLabelText('Search by name or employee ID')).toHaveValue('');
+  });
+
   it('sorts on the server when a column header is clicked and exposes aria-sort', async () => {
     mockApi({
       'GET /employees': { body: page([employee(1)]) },
@@ -114,6 +149,27 @@ describe('EmployeesView', () => {
     await screen.findByText('Priya Sharma1');
     await userEvent.selectOptions(screen.getByLabelText('Countries'), 'JP');
     await waitFor(() => expect(currentUrl().search).toBe('?country=JP'));
+  });
+
+  it('handles a page number past the end (stale bookmark) instead of showing nonsense ranges', async () => {
+    mockApi({
+      'GET /employees': ({ url }) => ({
+        body: {
+          data: url.searchParams.get('page') === '9' ? [] : [employee(1)],
+          page: Number(url.searchParams.get('page') ?? 1),
+          pageSize: 25,
+          total: 120,
+          totalPages: 5,
+        },
+      }),
+      'GET /reference-data': { body: reference },
+    });
+    setUrl('/employees?page=9');
+    renderWithProviders(<EmployeesView />);
+    expect(await screen.findByText('This page is past the end of the results')).toBeInTheDocument();
+    expect(screen.queryByText(/Showing 201/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Go to the last page' }));
+    await waitFor(() => expect(currentUrl().searchParams.get('page')).toBe('5'));
   });
 
   it('shows an empty state with a way out when nothing matches', async () => {

@@ -19,6 +19,8 @@ const email = z
   .max(254)
   .pipe(z.email('Must be a valid email address'));
 const id = z.coerce.number().int().positive();
+// A reference picked from a <select>: the empty placeholder option coerces to 0.
+const choice = z.coerce.number().int().positive('Please choose an option');
 const version = z.number().int().positive();
 const reasonText = z.string().trim().min(3, 'Please give a short reason').max(500);
 
@@ -94,8 +96,8 @@ export const createEmployeeRequestSchema = z.object({
   lastName: name,
   email,
   countryCode: countryCodeSchema,
-  departmentId: id,
-  jobTitleId: id,
+  departmentId: choice,
+  jobTitleId: choice,
   hireDate: isoDateSchema,
   status: z.enum(ASSIGNABLE_STATUSES).default('ACTIVE'),
   initialCompensation: initialCompensationSchema,
@@ -109,8 +111,8 @@ export const updateEmployeeRequestSchema = z
     lastName: name.optional(),
     email: email.optional(),
     countryCode: countryCodeSchema.optional(),
-    departmentId: id.optional(),
-    jobTitleId: id.optional(),
+    departmentId: choice.optional(),
+    jobTitleId: choice.optional(),
     hireDate: isoDateSchema.optional(),
     status: z.enum(ASSIGNABLE_STATUSES).optional(),
   })

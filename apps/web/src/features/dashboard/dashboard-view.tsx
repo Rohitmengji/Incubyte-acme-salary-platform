@@ -19,13 +19,7 @@ import {
 } from '@/components/ui/card';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/states';
 import { Table, Td, Th } from '@/components/ui/table';
-import {
-  formatCount,
-  formatDate,
-  formatMoney,
-  formatTimestamp,
-  humanize,
-} from '@/lib/format';
+import { formatCount, formatDate, formatMoney, formatTimestamp, humanize } from '@/lib/format';
 import { useDistribution, useHistogram, useRecentChanges, useSummary } from '@/lib/queries';
 
 function Kpi({
@@ -155,7 +149,7 @@ function RecentChanges() {
           <ul className="divide-y divide-slate-100">
             {recent.data.map((change) => {
               const after = change.after;
-              const currency = after.currencyCode ?? change.before?.currencyCode ?? null;
+              const currency = after.currencyCode ?? change.currencyCode;
               return (
                 <li
                   key={change.id}

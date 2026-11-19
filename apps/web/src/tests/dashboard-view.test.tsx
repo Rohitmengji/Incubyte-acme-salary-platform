@@ -69,6 +69,56 @@ describe('DashboardView', () => {
     expect(await screen.findByText('No salary changes yet')).toBeInTheDocument();
   });
 
+  it('shows the amounts of a correction that changed only the amount', async () => {
+    mockApi({
+      'GET /analytics/summary': { body: summary },
+      ...charts,
+      'GET /analytics/recent-changes': {
+        body: {
+          data: [
+            {
+              id: '1',
+              occurredAt: '2026-11-18T10:00:00.000Z',
+              action: 'COMPENSATION_CORRECTED',
+              employee: { id: 'e1', employeeCode: 'EMP-1', firstName: 'Ada', lastName: 'Ng' },
+              actor: { id: 'u1', displayName: 'HR Manager' },
+              // The audit diff has no currency because the currency did not change.
+              before: { amount: '7900000' },
+              after: { amount: '8100000' },
+              currencyCode: 'JPY',
+              correctionReason: 'Typo',
+            },
+          ],
+        },
+      },
+    });
+    renderWithProviders(<DashboardView />);
+    expect(await screen.findByText('JPY 8,100,000')).toBeInTheDocument();
+    expect(screen.getByText('JPY 7,900,000')).toHaveClass('line-through');
+  });
+
+  it('spells out exact histogram bands in the data table, where compact axis labels would round', async () => {
+    mockApi({
+      'GET /analytics/summary': { body: summary },
+      ...charts,
+      'GET /analytics/histogram': {
+        body: {
+          asOf: '2026-11-19',
+          currency: 'GBP',
+          normalized: false,
+          fx: summary.fx,
+          buckets: [
+            { from: '1250', to: '1500', count: 2 },
+            { from: '1500', to: '1750', count: 1 },
+          ],
+        },
+      },
+    });
+    renderWithProviders(<DashboardView />);
+    expect(await screen.findByRole('cell', { name: '1,250 to under 1,500' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '1,500 to under 1,750' })).toBeInTheDocument();
+  });
+
   it('shows an error with retry when the summary fails', async () => {
     let attempts = 0;
     mockApi({

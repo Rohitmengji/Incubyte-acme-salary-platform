@@ -126,7 +126,7 @@ function PreviewPanel({
             </div>
           ) : null}
           <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="secondary" onClick={onReset}>
+            <Button variant="secondary" onClick={onReset} disabled={commit.isPending}>
               <RotateCcw aria-hidden="true" /> Choose another file
             </Button>
             <Button
@@ -241,12 +241,19 @@ function PreviewPanel({
 
       <Dialog
         open={confirming}
-        onOpenChange={setConfirming}
+        // The import cannot be cancelled once sent, so keep the dialog (and its outcome) in view.
+        onOpenChange={(open) => {
+          if (!commit.isPending) setConfirming(open);
+        }}
         title={`Import ${formatCount(preview.validRows)} employees?`}
         description="Each employee is created with their starting salary in one transaction. If anything conflicts, nothing is imported."
       >
         <DialogFooter>
-          <Button variant="secondary" onClick={() => setConfirming(false)}>
+          <Button
+            variant="secondary"
+            onClick={() => setConfirming(false)}
+            disabled={commit.isPending}
+          >
             Cancel
           </Button>
           <Button
@@ -350,12 +357,21 @@ export function ImportWorkflow() {
         </CardHeader>
         <CardContent className="space-y-4">
           {upload.error || fileError ? (
-            <p
+            <div
               role="alert"
               className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 ring-1 ring-red-200"
             >
               {fileError ?? errorMessage(upload.error)}
-            </p>
+              {!fileError &&
+              upload.error instanceof ApiError &&
+              upload.error.problem.errors?.length ? (
+                <ul className="mt-1 list-disc pl-5">
+                  {upload.error.problem.errors.map((issue, i) => (
+                    <li key={i}>{issue.message}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           ) : null}
           <div className="rounded-lg border-2 border-dashed border-slate-300 p-6 text-center">
             <FileUp aria-hidden="true" className="mx-auto size-8 text-slate-400" />

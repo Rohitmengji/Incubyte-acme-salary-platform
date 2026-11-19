@@ -184,7 +184,14 @@ function FilterSelect({
 }
 
 export function EmployeesView() {
-  const { query, update, reset, hasFilters } = useEmployeeQueryState();
+  const { query, update, reset: resetQuery, hasFilters } = useEmployeeQueryState();
+  // Remounting the search box on reset also cancels a debounced search that has not been sent yet,
+  // which would otherwise re-apply itself after "Clear filters".
+  const [searchKey, setSearchKey] = useState(0);
+  const reset = () => {
+    setSearchKey((k) => k + 1);
+    resetQuery();
+  };
   const employees = useEmployees(query);
   const reference = useReferenceData();
   const user = useCurrentUser();
@@ -233,8 +240,9 @@ export function EmployeesView() {
           className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center"
         >
           <SearchBox
+            key={searchKey}
             value={query.search ?? ''}
-            onSearch={(search) => update({ search: search || undefined })}
+            onSearch={(search) => update({ search: search || undefined }, { history: 'replace' })}
           />
           <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <FilterSelect
@@ -292,6 +300,16 @@ export function EmployeesView() {
           </div>
         ) : employees.error ? (
           <ErrorState error={employees.error} onRetry={() => void employees.refetch()} />
+        ) : data && data.total > 0 && data.data.length === 0 ? (
+          <EmptyState
+            title="This page is past the end of the results"
+            description={`There are ${formatCount(data.total)} matching employees on ${formatCount(data.totalPages)} pages.`}
+            action={
+              <Button variant="secondary" onClick={() => update({ page: data.totalPages })}>
+                Go to the last page
+              </Button>
+            }
+          />
         ) : data && data.total === 0 ? (
           <EmptyState
             title="No employees match"
@@ -401,7 +419,7 @@ export function EmployeesView() {
           </div>
         )}
 
-        {data && data.total > 0 ? (
+        {data && data.data.length > 0 ? (
           <nav
             aria-label="Pagination"
             className="flex flex-col gap-3 p-4 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between"

@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/card';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useLogout, useSession } from '@/lib/queries';
+import { toast } from 'sonner';
 import { Logo } from './logo';
 
 export const CurrentUserContext = createContext<AuthUser | null>(null);
@@ -106,7 +107,14 @@ function UserMenu({ user }: { user: AuthUser }) {
           <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
           <DropdownMenu.Item
             className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-800 outline-none data-highlighted:bg-slate-100"
-            onSelect={() => logout.mutate(undefined, { onSettled: () => router.replace('/login') })}
+            onSelect={() =>
+              logout.mutate(undefined, {
+                // Only leave once the server has revoked the session; otherwise the cookie still works.
+                onSuccess: () => router.replace('/login'),
+                onError: () =>
+                  toast.error('Sign-out failed. Your session is still active - please try again.'),
+              })
+            }
           >
             <LogOut aria-hidden="true" className="size-4" /> Sign out
           </DropdownMenu.Item>
@@ -124,7 +132,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const unauthenticated = session.error instanceof ApiError && session.error.status === 401;
   useEffect(() => {
-    if (unauthenticated) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    if (unauthenticated) {
+      const next = `${window.location.pathname}${window.location.search}`;
+      router.replace(`/login?reason=expired&next=${encodeURIComponent(next)}`);
+    }
   }, [unauthenticated, router, pathname]);
 
   if (session.isPending || unauthenticated) {

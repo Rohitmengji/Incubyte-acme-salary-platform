@@ -19,7 +19,8 @@ import { Field, Input, Select, Textarea } from '@/components/ui/form';
 import { ApiError } from '@/lib/api';
 import { applyServerErrors } from '@/lib/form-errors';
 import { humanize } from '@/lib/format';
-import { useCorrectCompensation, useReferenceData } from '@/lib/queries';
+import { keys, useCorrectCompensation, useReferenceData } from '@/lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
 
 const schema = z.object({
   amount: amountSchema,
@@ -67,6 +68,7 @@ export function CorrectionDialog({
 }) {
   const reference = useReferenceData();
   const correct = useCorrectCompensation(employeeId);
+  const queryClient = useQueryClient();
   const [formError, setFormError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const {
@@ -123,7 +125,15 @@ export function CorrectionDialog({
           >
             <p>{formError}</p>
             {stale ? (
-              <Button type="button" variant="link" className="h-auto p-0" onClick={onClose}>
+              <Button
+                type="button"
+                variant="link"
+                className="h-auto p-0"
+                onClick={() => {
+                  void queryClient.invalidateQueries({ queryKey: keys.employee(employeeId) });
+                  onClose();
+                }}
+              >
                 Close and reload the latest history
               </Button>
             ) : null}

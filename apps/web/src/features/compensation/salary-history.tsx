@@ -130,7 +130,8 @@ export function SalaryHistory({
           </Table>
         )}
       </CardContent>
-      {canWrite ? (
+      {/* Mounted only while open so each opening starts from the latest current salary. */}
+      {canWrite && adding ? (
         <SalaryChangeDialog
           employeeId={employeeId}
           current={current}

@@ -154,23 +154,30 @@ export function EmployeeDetailView({ id }: { id: string }) {
         </Tabs.Content>
       </Tabs.Root>
 
+      {/* Dialogs mount only while open: Cancel discards edits and reopening starts from saved data. */}
       {user.canWrite ? (
         <>
-          <EditEmployeeDialog
-            employee={e}
-            open={dialog === 'edit'}
-            onOpenChange={(open) => setDialog(open ? 'edit' : null)}
-          />
-          <DeactivateDialog
-            employee={e}
-            open={dialog === 'deactivate'}
-            onOpenChange={(open) => setDialog(open ? 'deactivate' : null)}
-          />
-          <ReactivateDialog
-            employee={e}
-            open={dialog === 'reactivate'}
-            onOpenChange={(open) => setDialog(open ? 'reactivate' : null)}
-          />
+          {dialog === 'edit' ? (
+            <EditEmployeeDialog
+              employee={e}
+              open
+              onOpenChange={(open) => setDialog(open ? 'edit' : null)}
+            />
+          ) : null}
+          {dialog === 'deactivate' ? (
+            <DeactivateDialog
+              employee={e}
+              open
+              onOpenChange={(open) => setDialog(open ? 'deactivate' : null)}
+            />
+          ) : null}
+          {dialog === 'reactivate' ? (
+            <ReactivateDialog
+              employee={e}
+              open
+              onOpenChange={(open) => setDialog(open ? 'reactivate' : null)}
+            />
+          ) : null}
         </>
       ) : null}
     </div>

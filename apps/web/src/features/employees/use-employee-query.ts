@@ -46,16 +46,23 @@ export function useEmployeeQueryState() {
   const pathname = usePathname();
   const query = useMemo(() => parseEmployeeQuery(new URLSearchParams(params.toString())), [params]);
 
+  /**
+   * Filter, sort and page changes push a history entry so Back/Forward step through list states.
+   * Search-as-you-type replaces the entry so each debounced keystroke does not add one.
+   */
   const update = useCallback(
-    (changes: EmployeeQueryChanges) => {
+    (
+      changes: EmployeeQueryChanges,
+      { history = 'push' }: { history?: 'push' | 'replace' } = {},
+    ) => {
       const next: EmployeeListQuery = { ...query, ...changes, page: changes.page ?? 1 };
       const qs = serializeEmployeeQuery(next);
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      router[history](qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
     [query, router, pathname],
   );
 
-  const reset = useCallback(() => router.replace(pathname, { scroll: false }), [router, pathname]);
+  const reset = useCallback(() => router.push(pathname, { scroll: false }), [router, pathname]);
 
   const hasFilters = Boolean(
     query.search || query.country || query.department || query.jobTitle || query.status,

@@ -80,7 +80,7 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => api<void>('/auth/logout', { method: 'POST' }),
-    onSettled: () => queryClient.clear(),
+    onSuccess: () => queryClient.clear(),
   });
 }
 
